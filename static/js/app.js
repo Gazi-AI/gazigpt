@@ -64,6 +64,8 @@ const DOM = {
     fontSizeValue: $('#fontSizeValue'),
     settingsEnterSend: $('#settingsEnterSend'),
     clearAllChatsBtn: $('#clearAllChatsBtn'),
+    closeSidebar: $('#closeSidebar'),
+    sidebarOverlay: $('#sidebarOverlay'),
 };
 
 // ─── INIT ────────────────────────────────────
@@ -144,6 +146,7 @@ function selectChat(chatId) {
         showChatView(chat.messages);
     }
     DOM.sidebar.classList.remove('open');
+    DOM.sidebarOverlay.classList.remove('open');
 }
 
 function deleteChat(chatId) {
@@ -482,6 +485,15 @@ function applySettings() {
 }
 
 // ─── HELPERS ─────────────────────────────────
+function openSidebar() {
+    DOM.sidebar.classList.add('open');
+    DOM.sidebarOverlay.classList.add('open');
+}
+function closeSidebar() {
+    DOM.sidebar.classList.remove('open');
+    DOM.sidebarOverlay.classList.remove('open');
+}
+
 function scrollToBottom() { DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight; }
 
 function renderMarkdown(text) {
@@ -557,7 +569,9 @@ function setupEventListeners() {
     });
 
     DOM.searchChats.addEventListener('input', (e) => renderChatList(e.target.value));
-    DOM.toggleSidebar.addEventListener('click', () => DOM.sidebar.classList.toggle('open'));
+    DOM.toggleSidebar.addEventListener('click', () => openSidebar());
+    DOM.closeSidebar.addEventListener('click', () => closeSidebar());
+    DOM.sidebarOverlay.addEventListener('click', () => closeSidebar());
 
     // File
     DOM.attachBtn.addEventListener('click', () => DOM.fileInput.click());
@@ -582,6 +596,6 @@ function setupEventListeners() {
     // Shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'n') { e.preventDefault(); createChat(); }
-        if (e.key === 'Escape') { hideDeleteModal(); hideSettingsModal(); }
+        if (e.key === 'Escape') { hideDeleteModal(); hideSettingsModal(); closeSidebar(); }
     });
 }
