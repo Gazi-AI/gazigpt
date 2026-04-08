@@ -48,9 +48,13 @@ def api_chat():
     if not user_message:
         return jsonify({"error": "Mesaj boş olamaz."}), 400
 
+    if messages and messages[-1].get("role") == "user" and messages[-1].get("content") == user_message:
+        messages.pop()
+
     if file_content:
-        if messages and messages[-1]["role"] == "user":
-            messages[-1]["content"] += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
+        user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
+
+    messages.append({"role": "user", "content": user_message})
     response_text, tool_results = agent.chat(messages)
 
     return jsonify({
@@ -70,9 +74,13 @@ def api_chat_stream():
     if not user_message:
         return jsonify({"error": "Mesaj boş olamaz."}), 400
 
+    if messages and messages[-1].get("role") == "user" and messages[-1].get("content") == user_message:
+        messages.pop()
+
     if file_content:
-        if messages and messages[-1]["role"] == "user":
-            messages[-1]["content"] += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
+        user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
+
+    messages.append({"role": "user", "content": user_message})
     prompt = agent.build_system_prompt()
 
     def generate():
