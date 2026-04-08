@@ -86,10 +86,7 @@
                         <span class="feature-icon">📄</span>
                         <span class="feature-text">Web sayfası oku</span>
                     </div>
-                    <div class="feature-card" onclick="document.getElementById('fileInput').click()">
-                        <span class="feature-icon">📎</span>
-                        <span class="feature-text">Dosya ekle</span>
-                    </div>
+                    <!-- Dosya ekleme kartı kaldırıldı -->
                 </div>
             </div>
 
@@ -100,9 +97,7 @@
             <div class="input-area" id="inputArea">
                 <div class="input-container">
                     <div class="input-wrapper">
-                        <button class="attach-btn" id="attachBtn" title="Dosya ekle">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                        </button>
+                        <!-- Attach butonu kaldırıldı -->
                         <textarea id="messageInput" placeholder="Mesajınızı yazın... (Shift+Enter yeni satır)" rows="1"></textarea>
                         <button class="send-btn" id="sendBtn" title="Gönder">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -111,11 +106,7 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                         </button>
                     </div>
-                    <div class="file-preview" id="filePreview" style="display:none;">
-                        <span class="file-preview-name" id="filePreviewName"></span>
-                        <button class="file-preview-remove" id="filePreviewRemove" title="Kaldır">✕</button>
-                    </div>
-                    <input type="file" id="fileInput" style="display:none" accept=".txt,.py,.js,.ts,.json,.csv,.html,.css,.md,.xml,.yaml,.yml,.ini,.cfg,.log,.sql,.sh,.bat,.c,.cpp,.h,.java,.rb,.php,.go,.rs,.swift,.kt">
+                    <!-- File Preview kaldırıldı -->
                     <div class="input-footer">
                         <span class="char-count" id="charCount">0</span>
                         <span class="input-hint">GaziGPT gerektiğinde araçları otomatik kullanır</span>
