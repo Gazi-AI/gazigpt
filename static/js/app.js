@@ -301,7 +301,7 @@ async function sendMessage() {
 
                     if (ev.type === 'chunk') {
                         fullText += ev.content;
-                        bodyEl.innerHTML = renderMarkdown(fullText);
+                        bodyEl.innerHTML = renderMarkdown(fullText) + '<span class="stream-cursor">▊</span>';
                         bodyEl.querySelectorAll('pre code').forEach(b => {
                             if (!b.dataset.highlighted) {
                                 hljs.highlightElement(b);
