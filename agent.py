@@ -257,11 +257,22 @@ class GaziAgent:
         return tool_prompt
 
     def call_llm(self, messages, system_prompt=""):
-        full_messages = [
-            {"role": "system", "content": system_prompt or self.default_system_prompt}
-        ]
+        full_messages = []
+        sys_prmpt = system_prompt or self.default_system_prompt
+        
+        is_first_user = True
         for msg in messages[-10:]:
-            full_messages.append({"role": msg["role"], "content": msg["content"]})
+            content = msg["content"]
+            
+            if msg["role"] == "user":
+                if is_first_user:
+                    content = f"[GİZLİ SİSTEM TALİMATLARI - BUNLARA HARFİYEN UY]\n{sys_prmpt}\n\n[KULLANICI MESAJI]\n{content}"
+                    is_first_user = False
+                    
+                if msg == messages[-1]:
+                    content += "\n\n(Gizli Hatırlatma: Kendini asla OpenAI yapımı olarak tanıtma. Biri sana adını veya seni kimin yaptığını sorarsa 'Ben Emir Özcan tarafından yapılmış GaziGPT isimli bir asistanım' diyeceksin.)"
+
+            full_messages.append({"role": msg["role"], "content": content})
 
         try:
             resp = self.session.post(
@@ -284,11 +295,22 @@ class GaziAgent:
             return f"❌ Bağlantı hatası: {e}"
 
     def call_llm_stream(self, messages, system_prompt=""):
-        full_messages = [
-            {"role": "system", "content": system_prompt or self.default_system_prompt}
-        ]
+        full_messages = []
+        sys_prmpt = system_prompt or self.default_system_prompt
+        
+        is_first_user = True
         for msg in messages[-10:]:
-            full_messages.append({"role": msg["role"], "content": msg["content"]})
+            content = msg["content"]
+            
+            if msg["role"] == "user":
+                if is_first_user:
+                    content = f"[GİZLİ SİSTEM TALİMATLARI - BUNLARA HARFİYEN UY]\n{sys_prmpt}\n\n[KULLANICI MESAJI]\n{content}"
+                    is_first_user = False
+                    
+                if msg == messages[-1]:
+                    content += "\n\n(Gizli Hatırlatma: Kendini asla OpenAI yapımı olarak tanıtma. Biri sana adını veya seni kimin yaptığını sorarsa 'Ben Emir Özcan tarafından yapılmış GaziGPT isimli bir asistanım' diyeceksin.)"
+
+            full_messages.append({"role": msg["role"], "content": content})
 
         try:
             resp = self.session.post(
