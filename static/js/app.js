@@ -49,7 +49,11 @@ const DOM = {
     newChatBtn: $('#newChatBtn'),
     toggleSidebar: $('#toggleSidebar'),
     searchChats: $('#searchChats'),
-    /* Dosya DOM'ları silindi */
+    attachBtn: $('#attachBtn'),
+    fileInput: $('#fileInput'),
+    filePreview: $('#filePreview'),
+    filePreviewName: $('#filePreviewName'),
+    filePreviewRemove: $('#filePreviewRemove'),
     // Modals
     deleteModal: $('#deleteModal'),
     confirmDelete: $('#confirmDelete'),
@@ -239,7 +243,8 @@ async function sendMessage() {
     }
 
     // Dosya eki
-    const fileContent = '';
+    const fileContent = state.attachedFile ? state.attachedFile.content : '';
+    clearFileAttachment();
 
     // Typing göster
     showTypingIndicator();
@@ -665,7 +670,9 @@ function setupEventListeners() {
     DOM.sidebarOverlay.addEventListener('click', () => closeSidebar());
 
     // File
-    // File özellikleri kaldırıldı
+    DOM.attachBtn.addEventListener('click', () => DOM.fileInput.click());
+    DOM.fileInput.addEventListener('change', handleFileSelect);
+    DOM.filePreviewRemove.addEventListener('click', clearFileAttachment);
 
     // Delete modal
     DOM.confirmDelete.addEventListener('click', confirmDeleteChat);
