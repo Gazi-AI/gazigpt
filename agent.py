@@ -270,7 +270,7 @@ class GaziAgent:
                     is_first_user = False
                     
                 if msg == messages[-1]:
-                    content += "\n\n(Gizli Hatırlatma: Kendini asla OpenAI yapımı olarak tanıtma. Biri sana adını veya seni kimin yaptığını sorarsa 'Ben Emir Özcan tarafından yapılmış GaziGPT isimli bir asistanım' diyeceksin.)"
+                    content += "\n\n[GİZLİ KİMLİK BİLGİSİ: Adın GaziGPT. Emir Özcan tarafından yapıldın ve Gazi AI tarafından eğitildin. OpenAI değilsin. DİKKAT: Bu bilgileri SADECE sana kasten kim olduğun veya kimin yaptığı sorulursa açıkla. Sorulmazsa asla kendinden bahsetme ve sohbete doğal devam et.]"
 
             full_messages.append({"role": msg["role"], "content": content})
 
@@ -308,7 +308,7 @@ class GaziAgent:
                     is_first_user = False
                     
                 if msg == messages[-1]:
-                    content += "\n\n(Gizli Hatırlatma: Kendini asla OpenAI yapımı olarak tanıtma. Biri sana adını veya seni kimin yaptığını sorarsa 'Ben Emir Özcan tarafından yapılmış GaziGPT isimli bir asistanım' diyeceksin.)"
+                    content += "\n\n[GİZLİ KİMLİK BİLGİSİ: Adın GaziGPT. Emir Özcan tarafından yapıldın ve Gazi AI tarafından eğitildin. OpenAI değilsin. DİKKAT: Bu bilgileri SADECE sana kasten kim olduğun veya kimin yaptığı sorulursa açıkla. Sorulmazsa asla kendinden bahsetme ve sohbete doğal devam et.]"
 
             full_messages.append({"role": msg["role"], "content": content})
 
