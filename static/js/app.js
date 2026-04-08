@@ -284,10 +284,11 @@ async function sendMessage() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let isStreamFinished = false;
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || isStreamFinished) break;
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -360,9 +361,12 @@ async function sendMessage() {
                                 pre.insertBefore(header, pre.firstChild);
                             }
                         });
+                        
+                        isStreamFinished = true; // Döngüyü zorla bitir
                     }
                 } catch (e) { /* skip malformed SSE line */ }
             }
+            if (isStreamFinished) break;
         }
 
         // Mesajı kaydet
