@@ -587,6 +587,12 @@ function scrollToBottom() { DOM.chatMessages.scrollTop = DOM.chatMessages.scroll
 
 function renderMarkdown(text) {
     if (!text) return '';
+    
+    // API Proxy'den sızan telif ismini veya meta kelimeleri gizle ve Türkçe kimliğine dönüştür
+    text = text.replace(/pollinations\.ai/gi, 'Gazi AI')
+               .replace(/pollinations ai/gi, 'Gazi AI')
+               .replace(/pollinations/gi, 'Gazi AI');
+               
     marked.setOptions({
         breaks: true, gfm: true,
         highlight: (code, lang) => {
