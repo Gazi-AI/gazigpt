@@ -9,6 +9,7 @@ const state = {
     isLoading: false,
     deleteTargetId: null,
     attachedFile: null,   // { name, content }
+    abortController: null, // streaming iptal için
 };
 
 // ─── STORAGE HELPERS ─────────────────────────
@@ -43,6 +44,7 @@ const DOM = {
     emptyState: $('#emptyState'),
     messageInput: $('#messageInput'),
     sendBtn: $('#sendBtn'),
+    stopBtn: $('#stopBtn'),
     charCount: $('#charCount'),
     newChatBtn: $('#newChatBtn'),
     toggleSidebar: $('#toggleSidebar'),
@@ -196,7 +198,9 @@ async function sendMessage() {
     if (!message || state.isLoading) return;
 
     state.isLoading = true;
-    DOM.sendBtn.disabled = true;
+    state.abortController = new AbortController();
+    DOM.sendBtn.style.display = 'none';
+    DOM.stopBtn.style.display = 'flex';
     DOM.messageInput.value = '';
     DOM.messageInput.style.height = 'auto';
     updateCharCount();
@@ -245,6 +249,9 @@ async function sendMessage() {
     // Typing göster
     showTypingIndicator();
 
+    let fullText = '';
+    const ats = new Date().toISOString();
+
     try {
         const res = await fetch('/api/chat/stream', {
             method: 'POST',
@@ -254,16 +261,25 @@ async function sendMessage() {
                 message: message,
                 file_content: fileContent,
             }),
+            signal: state.abortController.signal,
         });
+
+        if (!res.ok) {
+            hideTypingIndicator();
+            appendMessage('assistant', `❌ Sunucu hatası (${res.status}). Lütfen tekrar deneyin.`);
+            state.isLoading = false;
+            state.abortController = null;
+            DOM.stopBtn.style.display = 'none';
+            DOM.sendBtn.style.display = 'flex';
+            return;
+        }
 
         hideTypingIndicator();
 
         // Streaming mesaj kutusu oluştur
-        const ats = new Date().toISOString();
-        const msgDiv = createStreamingMessage(ats);
-        const bodyEl = msgDiv.querySelector('.message-body');
-        let fullText = '';
-        let isToolPhase = false;
+        let msgDiv = createStreamingMessage(ats);
+        let bodyEl = msgDiv.querySelector('.message-body');
+        let finalText = '';  // Son kaydedilecek metin
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -281,17 +297,59 @@ async function sendMessage() {
                 if (!line.startsWith('data: ')) continue;
                 try {
                     const ev = JSON.parse(line.slice(6));
+
                     if (ev.type === 'chunk') {
-                        if (isToolPhase) { fullText = ''; isToolPhase = false; }
                         fullText += ev.content;
                         bodyEl.innerHTML = renderMarkdown(fullText);
-                        bodyEl.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+                        bodyEl.querySelectorAll('pre code').forEach(b => {
+                            if (!b.dataset.highlighted) {
+                                hljs.highlightElement(b);
+                                b.dataset.highlighted = 'true';
+                            }
+                        });
                         scrollToBottom();
+
                     } else if (ev.type === 'tool_start') {
-                        isToolPhase = true;
-                        bodyEl.innerHTML += '<div style="color:var(--text-accent);margin:8px 0;">🔧 Araç çalıştırılıyor...</div>';
+                        // İlk stream'in metnini sakla ama artık gösterme
+                        // Yeni bir tool durumu göster
+                        const toolCount = ev.count || 1;
+                        bodyEl.innerHTML = `
+                            <div class="tool-status" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(99,102,241,0.08);border-radius:12px;margin:4px 0;">
+                                <div class="tool-spinner" style="width:20px;height:20px;border:2.5px solid rgba(99,102,241,0.2);border-top-color:rgb(99,102,241);border-radius:50%;animation:tool-spin 0.8s linear infinite;"></div>
+                                <span style="color:var(--text-secondary);font-size:0.9rem;">🔧 ${toolCount} araç çalıştırılıyor...</span>
+                            </div>
+                        `;
                         scrollToBottom();
+
+                    } else if (ev.type === 'tool_done') {
+                        // Tool bitti, ikinci stream başlayacak
+                        const toolNames = ev.tools || [];
+                        const toolBadges = toolNames.map(t => `<span style="display:inline-block;background:rgba(99,102,241,0.12);color:rgb(99,102,241);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:500;">${t}</span>`).join(' ');
+                        
+                        // Yeni mesaj kutusu oluştur — tool sonuçlarını gösterecek
+                        fullText = '';
+                        bodyEl.innerHTML = `
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+                                <span style="font-size:0.82rem;color:var(--text-muted);">✅ Araçlar tamamlandı:</span>
+                                ${toolBadges}
+                            </div>
+                            <span class="stream-cursor">▊</span>
+                        `;
+                        scrollToBottom();
+
+                    } else if (ev.type === 'error') {
+                        bodyEl.innerHTML = `<div style="color:#ef4444;">❌ Hata: ${ev.message || 'Bilinmeyen hata'}</div>`;
+                        scrollToBottom();
+
                     } else if (ev.type === 'done') {
+                        // Stream cursor'u temizle
+                        const cursor = bodyEl.querySelector('.stream-cursor');
+                        if (cursor) cursor.remove();
+
+                        // Son metni kaydet
+                        finalText = fullText;
+
+                        // Kod bloklarına copy button ekle
                         bodyEl.querySelectorAll('pre').forEach(pre => {
                             if (!pre.querySelector('.code-header')) {
                                 const code = pre.querySelector('code');
@@ -303,15 +361,33 @@ async function sendMessage() {
                             }
                         });
                     }
-                } catch (e) { /* skip */ }
+                } catch (e) { /* skip malformed SSE line */ }
             }
         }
 
-        chat.messages.push({ role: 'assistant', content: fullText, timestamp: ats });
+        // Mesajı kaydet
+        if (finalText || fullText) {
+            chat.messages.push({ role: 'assistant', content: finalText || fullText, timestamp: ats });
+        }
+
+        // Son güvenlik: cursor kaldıysa temizle
+        const leftoverCursor = bodyEl.querySelector('.stream-cursor');
+        if (leftoverCursor) leftoverCursor.remove();
 
     } catch (err) {
         hideTypingIndicator();
-        appendMessage('assistant', '❌ Bağlantı hatası: ' + err.message);
+        if (err.name === 'AbortError') {
+            // Kullanıcı durdurdu — o ana kadar gelen metni kaydet
+            if (fullText) {
+                chat.messages.push({ role: 'assistant', content: fullText, timestamp: ats });
+            }
+            // Cursor temizle
+            const cursorEl = document.querySelector('.message-assistant:last-child .stream-cursor');
+            if (cursorEl) cursorEl.remove();
+            showToast('Yanıt durduruldu', 'success');
+        } else {
+            appendMessage('assistant', '❌ Bağlantı hatası: ' + err.message);
+        }
     }
 
     chat.updated_at = new Date().toISOString();
@@ -320,8 +396,17 @@ async function sendMessage() {
     renderChatList();
 
     state.isLoading = false;
-    DOM.sendBtn.disabled = false;
+    state.abortController = null;
+    DOM.stopBtn.style.display = 'none';
+    DOM.sendBtn.style.display = 'flex';
     DOM.messageInput.focus();
+}
+
+/** Streaming yanıtı durdur */
+function stopGeneration() {
+    if (state.abortController) {
+        state.abortController.abort();
+    }
 }
 
 /** Streaming için boş assistant mesaj kutusu */
@@ -558,6 +643,7 @@ function showToast(msg, type = 'success') {
 function setupEventListeners() {
     DOM.newChatBtn.addEventListener('click', createChat);
     DOM.sendBtn.addEventListener('click', sendMessage);
+    DOM.stopBtn.addEventListener('click', stopGeneration);
 
     DOM.messageInput.addEventListener('input', () => { updateCharCount(); autoResize(); });
     DOM.messageInput.addEventListener('keydown', (e) => {
