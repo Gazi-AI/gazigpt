@@ -49,9 +49,8 @@ def api_chat():
         return jsonify({"error": "Mesaj boş olamaz."}), 400
 
     if file_content:
-        user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
-
-    messages.append({"role": "user", "content": user_message})
+        if messages and messages[-1]["role"] == "user":
+            messages[-1]["content"] += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
     response_text, tool_results = agent.chat(messages)
 
     return jsonify({
@@ -72,39 +71,51 @@ def api_chat_stream():
         return jsonify({"error": "Mesaj boş olamaz."}), 400
 
     if file_content:
-        user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
-
-    messages.append({"role": "user", "content": user_message})
+        if messages and messages[-1]["role"] == "user":
+            messages[-1]["content"] += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
     prompt = agent.build_system_prompt()
 
     def generate():
         import json as _json
         full_text = ""
 
-        # Stream yanıtı chunk chunk gönder
-        for chunk in agent.call_llm_stream(messages, system_prompt=prompt):
-            full_text += chunk
-            yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-
-        # Stream bitti — tool call var mı kontrol et
-        tool_matches = agent.extract_tool_calls(full_text)
-
-        if tool_matches:
-            # Tool'ları çalıştır
-            processed, tool_results = agent.execute_tool_calls(full_text)
-
-            yield f"data: {_json.dumps({'type': 'tool_start'}, ensure_ascii=False)}\n\n"
-
-            # Tool sonuçlarını AI'a gönder ve ikinci yanıtı stream et
-            msgs2 = messages.copy()
-            msgs2.append({"role": "assistant", "content": processed})
-            msgs2.append({
-                "role": "user",
-                "content": "[Sistem: Tool sonuçları alındı. Sonuçları kullanıcıya güzel özetle. Tekrar tool çağırma.]"
-            })
-
-            for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt):
+        try:
+            # Stream yanıtı chunk chunk gönder
+            for chunk in agent.call_llm_stream(messages, system_prompt=prompt):
+                full_text += chunk
                 yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+            # Stream bitti — tool call var mı kontrol et
+            tool_matches = agent.extract_tool_calls(full_text)
+
+            if tool_matches:
+                # Frontend'e tool başladığını bildir
+                yield f"data: {_json.dumps({'type': 'tool_start', 'count': len(tool_matches)}, ensure_ascii=False)}\n\n"
+
+                # Tool'ları çalıştır
+                processed, tool_results = agent.execute_tool_calls(full_text)
+
+                # Tool sonuçlarını kısaca bildir
+                tool_names = [tr['tool'] for tr in tool_results]
+                yield f"data: {_json.dumps({'type': 'tool_done', 'tools': tool_names}, ensure_ascii=False)}\n\n"
+
+                # Tool sonuçlarını AI'a gönder ve ikinci yanıtı stream et
+                msgs2 = messages.copy()
+                msgs2.append({"role": "assistant", "content": processed})
+                msgs2.append({
+                    "role": "user",
+                    "content": (
+                        "[Sistem: Tool sonuçları başarıyla alındı. "
+                        "Sonuçları kullanıcıya güzel, anlaşılır ve detaylı şekilde sun. "
+                        "Tekrar tool çağırma. tool_call bloğu kullanma.]"
+                    )
+                })
+
+                for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt):
+                    yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
 
         yield f"data: {_json.dumps({'type': 'done'})}\n\n"
 
@@ -115,6 +126,7 @@ def api_chat_stream():
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
+            "Transfer-Encoding": "chunked",
         },
     )
 
