@@ -41,20 +41,17 @@ def serve_static(filename):
 def api_chat():
     """Mesaj gönder, AI yanıtı al (non-stream fallback)."""
     data = request.json or {}
-    messages = data.get("messages", [])
+    messages = list(data.get("messages", []))
     user_message = data.get("message", "").strip()
     file_content = data.get("file_content", "")
 
     if not user_message:
         return jsonify({"error": "Mesaj boş olamaz."}), 400
 
-    if messages and messages[-1].get("role") == "user" and messages[-1].get("content") == user_message:
-        messages.pop()
-
-    if file_content:
-        user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
-
-    messages.append({"role": "user", "content": user_message})
+    if file_content and len(messages) > 0 and isinstance(messages[-1], dict) and messages[-1].get("role") == "user":
+        last_msg = dict(messages[-1])
+        last_msg["content"] += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
+        messages[-1] = last_msg
     response_text, tool_results = agent.chat(messages)
 
     return jsonify({
@@ -67,20 +64,17 @@ def api_chat():
 def api_chat_stream():
     """Streaming SSE endpoint — token token yanıt gönderir."""
     data = request.json or {}
-    messages = data.get("messages", [])
+    messages = list(data.get("messages", []))
     user_message = data.get("message", "").strip()
     file_content = data.get("file_content", "")
 
     if not user_message:
         return jsonify({"error": "Mesaj boş olamaz."}), 400
 
-    if messages and messages[-1].get("role") == "user" and messages[-1].get("content") == user_message:
-        messages.pop()
-
-    if file_content:
-        user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
-
-    messages.append({"role": "user", "content": user_message})
+    if file_content and len(messages) > 0 and isinstance(messages[-1], dict) and messages[-1].get("role") == "user":
+        last_msg = dict(messages[-1])
+        last_msg["content"] += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
+        messages[-1] = last_msg
     prompt = agent.build_system_prompt()
 
     def generate():
