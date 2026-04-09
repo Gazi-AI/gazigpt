@@ -1,42 +1,56 @@
-"""
-Döviz Kuru Aracı - Güncel döviz kurları ve çevirme.
-"""
-
 import requests
 
 TOOL_DEFINITION = {
-    'name': 'currency',
-    'emoji': '💱',
-    'description': 'Güncel döviz kurlarını gösterir ve para birimi dönüşümü yapar.',
-    'parameters': {
-        'amount': {'type': 'number', 'description': 'Miktar (varsayılan: 1)', 'required': False},
-        'from_currency': {'type': 'string', 'description': 'Kaynak para birimi (USD, EUR, TRY)', 'required': True},
-        'to_currency': {'type': 'string', 'description': 'Hedef para birimi', 'required': True}
+    "name": "currency",
+    "description": "Güncel döviz kurlarını öğrenmek için kullanılır (USD, EUR, TRY vb.).",
+    "emoji": "💱",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "base": {
+                "type": "string",
+                "description": "Ana para birimi (örneğin: USD, EUR, TRY)"
+            },
+            "to": {
+                "type": "string",
+                "description": "Dönüştürülecek para birimi (opsiyonel)"
+            }
+        },
+        "required": ["base"]
     }
 }
 
 def execute(params):
-    amount = params.get('amount', 1)
-    from_curr = params.get('from_currency', 'USD').upper()
-    to_curr = params.get('to_currency', 'TRY').upper()
+    base = params.get("base", "TRY").upper()
+    target = params.get("to")
+    
     try:
-        url = f"https://api.exchangerate-api.com/v4/latest/{from_curr}"
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        rates = data.get('rates', {})
-        if to_curr not in rates:
-            return {'error': f'"{to_curr}" para birimi bulunamadı.'}
-        rate = rates[to_curr]
-        converted = amount * rate
-        popular = {}
-        for curr in ['USD', 'EUR', 'GBP', 'TRY', 'JPY']:
-            if curr in rates and curr != from_curr:
-                popular[curr] = round(rates[curr], 4)
-        return {
-            'amount': amount, 'from': from_curr, 'to': to_curr,
-            'rate': round(rate, 4), 'converted': round(converted, 2),
-            'formatted': f'{amount} {from_curr} = {converted:,.2f} {to_curr}',
-            'other_rates': popular
-        }
+        # Ücretsiz bir kur servisi
+        url = f"https://api.exchangerate-api.com/v4/latest/{base}"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            rates = data.get("rates", {})
+            
+            if target:
+                target = target.upper()
+                if target in rates:
+                    return {
+                        "base": base,
+                        "target": target,
+                        "rate": rates[target],
+                        "date": data.get("date")
+                    }
+                else:
+                    return {"error": f"Para birimi bulunamadı: {target}"}
+            
+            # Belirli ana birimleri döndür
+            main_rates = {k: rates[k] for k in ["USD", "EUR", "TRY", "GBP"] if k in rates and k != base}
+            return {
+                "base": base,
+                "rates": main_rates,
+                "date": data.get("date")
+            }
+        return {"error": f"Kur bilgisi alınamadı ({resp.status_code})"}
     except Exception as e:
-        return {'error': f'Döviz kuru hatası: {str(e)}'}
+        return {"error": f"Bir hata oluştu: {str(e)}"}
