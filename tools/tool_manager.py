@@ -30,9 +30,9 @@ class ToolManager:
                             'definition': tool_def,
                             'execute': module.execute
                         }
-                        print(f"  ✅ Tool yüklendi: {tool_def['name']}")
+                        print(f"  [OK] Tool yuklendi: {tool_def['name']}")
                 except Exception as e:
-                    print(f"  ⚠️ Tool yüklenemedi ({module_name}): {e}")
+                    print(f"  [ERROR] Tool yuklenemedi ({module_name}): {e}")
     
     def get_all_definitions(self):
         """Tüm tool tanımlarını döndür (AI'a gönderilecek format)."""
@@ -94,16 +94,20 @@ class ToolManager:
 Kullanılabilir araçlar:
 {tools_text}
 
-Bir araç kullanman gerektiğinde, yanıtında şu JSON formatını kullan:
+### 🛠️ ARAÇ KULLANIM PROTOKOLÜ:
+1. Eğer bir görev için araç kullanman gerekiyorsa, araç çağırmadan önce **ASLA** cevabı kendin uydurma veya nihai cevabı verme.
+2. Bir araç kullanman gerektiğinde, yanıtın **SADECE** şu şekilde olmalıdır:
+   - Kısa bir bilgilendirme cümlesi (örn: "Döviz kurlarını kontrol ediyorum...")
+   - Ardından hemen araç çağrısı blok(ları).
+   - **KESİNLİKLE** araç çağrısından sonra başka bir metin veya cevap yazma.
+3. Araç çağrısı formatı (BAŞKA HİÇBİR FORMAT KABUL EDİLMEZ):
 ```tool_call
 {{"tool": "araç_adı", "params": {{"parametre": "değer"}}}}
 ```
+4. Araç sonucunu aldıktan sonra, kullanıcıya **nihai ve detaylı cevabı** sun. Ham JSON verisini olduğu gibi verme, anlaşılır bir dile çevir.
 
 Önemli kurallar:
-1. Araç kullanmadan önce kullanıcıya ne yapacağını kısaca açıkla.
-2. Araç sonucunu aldıktan sonra sonucu güzel ve anlaşılır şekilde özetle.
-3. Birden fazla araç kullanabilirsin.
-4. Türkçe yanıt ver (kullanıcı başka dilde sorarsa o dilde).
-5. Markdown formatını kullan (başlıklar, listeler, kod blokları vs.).
-6. Kullanıcıya her zaman yardımcı ve kibar ol.
-7. Eğer bir araç hatası olursa, kullanıcıya açıkla ve alternatif öner."""
+- Birden fazla araç kullanabilirsin.
+- Türkçe yanıt ver (kullanıcı başka dilde sorarsa o dilde).
+- Markdown formatını kullan.
+- Eğer bir araç hatası olursa, kullanıcıya açıkla ve gerekirse manuel bilgi ver veya alternatif öner."""
