@@ -8,7 +8,7 @@ const state = {
     currentChatId: null,
     isLoading: false,
     deleteTargetId: null,
-    attachedFile: null,   // { name, content }
+    deleteTargetId: null,
     abortController: null, // streaming iptal için
 };
 
@@ -49,11 +49,6 @@ const DOM = {
     newChatBtn: $('#newChatBtn'),
     toggleSidebar: $('#toggleSidebar'),
     searchChats: $('#searchChats'),
-    attachBtn: $('#attachBtn'),
-    fileInput: $('#fileInput'),
-    filePreview: $('#filePreview'),
-    filePreviewName: $('#filePreviewName'),
-    filePreviewRemove: $('#filePreviewRemove'),
     // Modals
     deleteModal: $('#deleteModal'),
     confirmDelete: $('#confirmDelete'),
@@ -134,12 +129,14 @@ function renderChatList(filter = '') {
 
 // ─── CHAT CRUD (localStorage) ────────────────
 function createChat() {
+    if (state.isLoading) stopGeneration();
     state.currentChatId = null;
     showEmptyState();
     DOM.messageInput.focus();
 }
 
 function selectChat(chatId) {
+    if (state.isLoading) stopGeneration();
     state.currentChatId = chatId;
     const all = loadChatsFromStorage();
     const chat = all[chatId];
@@ -152,6 +149,7 @@ function selectChat(chatId) {
 }
 
 function deleteChat(chatId) {
+    if (state.currentChatId === chatId && state.isLoading) stopGeneration();
     const all = loadChatsFromStorage();
     delete all[chatId];
     saveChatsToStorage(all);
@@ -164,6 +162,7 @@ function deleteChat(chatId) {
 }
 
 function clearAllChats() {
+    if (state.isLoading) stopGeneration();
     localStorage.removeItem(STORAGE_KEY);
     state.currentChatId = null;
     showEmptyState();
@@ -178,7 +177,7 @@ function showChatView(messages) {
     DOM.chatMessages.style.flexDirection = 'column';
     DOM.chatMessages.innerHTML = '';
     messages.forEach(m => {
-        if (!m.is_system) appendMessage(m.role, m.content, m.timestamp, false);
+        if (!m.is_system) appendMessage(m.role, m.content, m.timestamp, false, m.toolHtml || '');
     });
     scrollToBottom();
     DOM.messageInput.focus();
@@ -242,15 +241,16 @@ async function sendMessage() {
         chat.title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
     }
 
-    // Dosya eki
-    const fileContent = state.attachedFile ? state.attachedFile.content : '';
-    clearFileAttachment();
 
     // Typing göster
     showTypingIndicator();
 
     let fullText = '';
+    let toolResultsHtml = '';
     const ats = new Date().toISOString();
+
+    const ratioSelect = document.getElementById('imageRatio');
+    const ratioHint = (ratioSelect && ratioSelect.value !== '1:1') ? `\n(Not: Eğer görsel üreteceksen, kullanıcının seçtiği ${ratioSelect.value} oranını 'ratio' parametresi olarak kesinlikle kullan.)` : '';
 
     try {
         const res = await fetch('/api/chat/stream', {
@@ -258,8 +258,7 @@ async function sendMessage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 messages: chat.messages.filter(m => !m.is_system).map(m => ({ role: m.role, content: m.content })),
-                message: message,
-                file_content: fileContent,
+                message: message + ratioHint
             }),
             signal: state.abortController.signal,
         });
@@ -278,17 +277,17 @@ async function sendMessage() {
 
         // Streaming mesaj kutusu oluştur
         let msgDiv = createStreamingMessage(ats);
-        let bodyEl = msgDiv.querySelector('.message-body');
-        let finalText = '';  // Son kaydedilecek metin
+        let toolsContainer = msgDiv.querySelector('.tools-container');
+        let markdownContainer = msgDiv.querySelector('.markdown-container');
+        let currentPhaseText = ''; // Mevcut fazdaki (tool öncesi/sonrası) metin
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let isStreamFinished = false;
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done || isStreamFinished) break;
+            if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -300,9 +299,10 @@ async function sendMessage() {
                     const ev = JSON.parse(line.slice(6));
 
                     if (ev.type === 'chunk') {
+                        currentPhaseText += ev.content;
                         fullText += ev.content;
-                        bodyEl.innerHTML = renderMarkdown(fullText) + '<span class="stream-cursor">▊</span>';
-                        bodyEl.querySelectorAll('pre code').forEach(b => {
+                        markdownContainer.innerHTML = renderMarkdown(currentPhaseText) + '<span class="stream-cursor">▊</span>';
+                        markdownContainer.querySelectorAll('pre code').forEach(b => {
                             if (!b.dataset.highlighted) {
                                 hljs.highlightElement(b);
                                 b.dataset.highlighted = 'true';
@@ -311,47 +311,71 @@ async function sendMessage() {
                         scrollToBottom();
 
                     } else if (ev.type === 'tool_start') {
-                        // İlk stream'in metnini sakla ama artık gösterme
-                        // Yeni bir tool durumu göster
+                        // İlk metin genellikle gereksiz bir ön-cevaptır, temizleyip durumu gösterelim
                         const toolCount = ev.count || 1;
-                        bodyEl.innerHTML = `
-                            <div class="tool-status" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(99,102,241,0.08);border-radius:12px;margin:4px 0;">
+                        const statusHtml = `
+                            <div class="tool-status" id="tool-status-tmp" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(99,102,241,0.08);border-radius:12px;margin:10px 0;">
                                 <div class="tool-spinner" style="width:20px;height:20px;border:2.5px solid rgba(99,102,241,0.2);border-top-color:rgb(99,102,241);border-radius:50%;animation:tool-spin 0.8s linear infinite;"></div>
                                 <span style="color:var(--text-secondary);font-size:0.9rem;">🔧 ${toolCount} araç çalıştırılıyor...</span>
                             </div>
                         `;
+                        // Önceki gereksiz metni temizle (görsel olarak daha temiz)
+                        toolsContainer.innerHTML = statusHtml;
                         scrollToBottom();
 
                     } else if (ev.type === 'tool_done') {
-                        // Tool bitti, ikinci stream başlayacak
+                        // Tool bitti, göstergeyi temizle ve badge'leri ekle
                         const toolNames = ev.tools || [];
                         const toolBadges = toolNames.map(t => `<span style="display:inline-block;background:rgba(99,102,241,0.12);color:rgb(99,102,241);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:500;">${t}</span>`).join(' ');
                         
-                        // Yeni mesaj kutusu oluştur — tool sonuçlarını gösterecek
-                        fullText = '';
-                        bodyEl.innerHTML = `
-                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+                        toolResultsHtml += `
+                            <div style="display:flex;align-items:center;gap:6px;margin:10px 0;flex-wrap:wrap;">
                                 <span style="font-size:0.82rem;color:var(--text-muted);">✅ Araçlar tamamlandı:</span>
                                 ${toolBadges}
                             </div>
-                            <span class="stream-cursor">▊</span>
                         `;
+                        // Bir sonraki faz (özet) için metni temizle ama görünümü koru
+                        currentPhaseText = ''; 
+                        toolsContainer.innerHTML = toolResultsHtml;
+                        markdownContainer.innerHTML = `<span class="stream-cursor">▊</span>`;
+                        scrollToBottom();
+
+                    } else if (ev.type === 'image_result') {
+                        // GÖRSELİ BURADA OLUŞTURUYORUZ (MARKDOWN DIŞINDA)
+                        const { url, seed, prompt } = ev;
+                        if (!url || url === 'null' || url === 'undefined') {
+                            console.error("Geçersiz görsel URL'si:", ev);
+                            return;
+                        }
+
+                        const imgHtml = `
+                            <div class="generated-image-container" style="position: relative; margin: 16px 0; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: #000; max-width: 512px; min-height: 256px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                                <div id="loader-${seed}" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 10;">
+                                    <div style="width: 50px; height: 50px; border: 4px solid rgba(99,102,241,0.2); border-top-color: #6366f1; border-radius: 50%; animation: tool-spin 1s linear infinite;"></div>
+                                    <div style="margin-top: 16px; color: #a1a1aa; font-size: 0.9rem; font-weight: 500; text-align: center; padding: 0 16px;">🎨 Görsel Üretiliyor...<br><span style="font-size: 0.8rem; color: #71717a;">Lütfen Bekleyin (Yaklaşık 10-20 saniye)</span></div>
+                                </div>
+                                <img src="${url}" referrerpolicy="no-referrer" style="width: 100%; height: auto; display: block; opacity: 0; transition: opacity 0.5s ease-in;" alt="${prompt || 'GaziGPT Görsel'}" onload="window.handleImageLoad('${seed}', this)" onerror="window.handleImageError('${seed}', this)">
+                                <div id="actions-${seed}" style="display: none; gap: 8px; padding: 12px; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); position: relative; z-index: 5;">
+                                    <a href="${url}" target="_blank" style="flex: 1; text-align: center; padding: 10px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border-radius: 8px; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s;">🔍 Tam Ekran</a>
+                                    <button onclick="downloadImage('${url}', 'flux-${seed || 'image'}.jpg')" style="flex: 1; text-align: center; padding: 10px; background: linear-gradient(135deg, #7c3aed, #6366f1); color: #fff; border: none; cursor: pointer; border-radius: 8px; font-size: 0.8rem; font-weight: 600; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);">💾 İndir</button>
+                                </div>
+                            </div>
+                        `;
+                        toolResultsHtml += imgHtml;
+                        toolsContainer.innerHTML = toolResultsHtml;
                         scrollToBottom();
 
                     } else if (ev.type === 'error') {
-                        bodyEl.innerHTML = `<div style="color:#ef4444;">❌ Hata: ${ev.message || 'Bilinmeyen hata'}</div>`;
+                        markdownContainer.innerHTML = `<div style="color:#ef4444;">❌ Hata: ${ev.message || 'Bilinmeyen hata'}</div>`;
                         scrollToBottom();
 
                     } else if (ev.type === 'done') {
                         // Stream cursor'u temizle
-                        const cursor = bodyEl.querySelector('.stream-cursor');
+                        const cursor = markdownContainer.querySelector('.stream-cursor');
                         if (cursor) cursor.remove();
 
-                        // Son metni kaydet
-                        finalText = fullText;
-
                         // Kod bloklarına copy button ekle
-                        bodyEl.querySelectorAll('pre').forEach(pre => {
+                        markdownContainer.querySelectorAll('pre').forEach(pre => {
                             if (!pre.querySelector('.code-header')) {
                                 const code = pre.querySelector('code');
                                 const lang = code?.className?.match(/language-(\w+)/)?.[1] || 'code';
@@ -361,29 +385,26 @@ async function sendMessage() {
                                 pre.insertBefore(header, pre.firstChild);
                             }
                         });
-                        
-                        isStreamFinished = true; // Döngüyü zorla bitir
                     }
                 } catch (e) { /* skip malformed SSE line */ }
             }
-            if (isStreamFinished) break;
         }
 
         // Mesajı kaydet
-        if (finalText || fullText) {
-            chat.messages.push({ role: 'assistant', content: finalText || fullText, timestamp: ats });
+        if (fullText || toolResultsHtml) {
+            chat.messages.push({ role: 'assistant', content: fullText, timestamp: ats, toolHtml: toolResultsHtml });
         }
 
         // Son güvenlik: cursor kaldıysa temizle
-        const leftoverCursor = bodyEl.querySelector('.stream-cursor');
+        const leftoverCursor = markdownContainer.querySelector('.stream-cursor');
         if (leftoverCursor) leftoverCursor.remove();
 
     } catch (err) {
         hideTypingIndicator();
         if (err.name === 'AbortError') {
             // Kullanıcı durdurdu — o ana kadar gelen metni kaydet
-            if (fullText) {
-                chat.messages.push({ role: 'assistant', content: fullText, timestamp: ats });
+            if (fullText || toolResultsHtml) {
+                chat.messages.push({ role: 'assistant', content: fullText, timestamp: ats, toolHtml: toolResultsHtml });
             }
             // Cursor temizle
             const cursorEl = document.querySelector('.message-assistant:last-child .stream-cursor');
@@ -424,7 +445,10 @@ function createStreamingMessage(timestamp) {
             <span class="message-sender">GaziGPT</span>
             <span class="message-time">${time}</span>
         </div>
-        <div class="message-body"><span class="stream-cursor">▊</span></div>
+        <div class="message-body">
+            <div class="tools-container"></div>
+            <div class="markdown-container"><span class="stream-cursor">▊</span></div>
+        </div>
     `;
     DOM.chatMessages.appendChild(div);
     fixAvatarBg(div);
@@ -445,8 +469,40 @@ function fixAvatarBg(el) {
     if (avatar) { avatar.style.background = 'transparent'; }
 }
 
+window.handleImageLoad = function(seed, imgEl) {
+    const loader = document.getElementById('loader-' + seed);
+    if (loader) loader.style.display = 'none';
+    const actions = document.getElementById('actions-' + seed);
+    if (actions) actions.style.display = 'flex';
+    if (imgEl) imgEl.style.opacity = '1';
+};
+
+window.handleImageError = function(seed, imgEl) {
+    const loader = document.getElementById('loader-' + seed);
+    if (loader) loader.innerHTML = '<div style="color:#ef4444; font-weight:bold;">❌ Görsel Yüklenemedi</div>';
+    if (imgEl) imgEl.style.display = 'none';
+};
+
 // ─── MESSAGE RENDERING ──────────────────────
-function appendMessage(role, content, timestamp, scroll = true) {
+async function downloadImage(url, filename) {
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+        showToast('Görsel indirilirken hata oluştu', 'error');
+        console.error('Download error:', e);
+    }
+}
+
+function appendMessage(role, content, timestamp, scroll = true, toolHtml = '') {
     const isUser = role === 'user';
     const time = timestamp ? formatTime(timestamp) : formatTime(new Date().toISOString());
     const rendered = isUser ? escapeHtml(content) : renderMarkdown(content);
@@ -459,7 +515,10 @@ function appendMessage(role, content, timestamp, scroll = true) {
             <span class="message-sender">${isUser ? 'Sen' : 'GaziGPT'}</span>
             <span class="message-time">${time}</span>
         </div>
-        <div class="message-body">${rendered}</div>
+        <div class="message-body">
+            <div class="tools-container">${toolHtml}</div>
+            <div class="markdown-container">${rendered}</div>
+        </div>
     `;
     DOM.chatMessages.appendChild(div);
     if (!isUser) fixAvatarBg(div);
@@ -507,31 +566,6 @@ function hideTypingIndicator() {
     if (el) el.remove();
 }
 
-// ─── FILE ATTACHMENT ─────────────────────────
-function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (file.size > 500_000) {
-        showToast('Dosya çok büyük (maks 500KB)', 'error');
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        state.attachedFile = { name: file.name, content: ev.target.result };
-        DOM.filePreviewName.textContent = `📎 ${file.name}`;
-        DOM.filePreview.style.display = 'flex';
-    };
-    reader.readAsText(file);
-    DOM.fileInput.value = ''; // reset
-}
-
-function clearFileAttachment() {
-    state.attachedFile = null;
-    DOM.filePreview.style.display = 'none';
-    DOM.filePreviewName.textContent = '';
-}
 
 // ─── DELETE MODAL ────────────────────────────
 function showDeleteModal(chatId) {
@@ -588,19 +622,18 @@ function scrollToBottom() { DOM.chatMessages.scrollTop = DOM.chatMessages.scroll
 function renderMarkdown(text) {
     if (!text) return '';
     
-    // API Proxy'den sızan telif ismini veya meta kelimeleri gizle ve Türkçe kimliğine dönüştür
-    text = text.replace(/pollinations\.ai/gi, 'Gazi AI')
-               .replace(/pollinations ai/gi, 'Gazi AI')
-               .replace(/pollinations/gi, 'Gazi AI');
-               
+    // Teknik araç çağrılarını (tool_call) UI'da gösterme
+    let cleanText = text.replace(/```\s*tool_call\s*\{.*?\}\s*```/gs, '');
+    
+    // Marked yapılandırması - HTML'e izin ver
     marked.setOptions({
-        breaks: true, gfm: true,
-        highlight: (code, lang) => {
-            if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
-            return hljs.highlightAuto(code).value;
-        },
+        breaks: true,
+        gfm: true,
+        mangle: false,
+        headerIds: false
     });
-    return marked.parse(text);
+
+    return marked.parse(cleanText);
 }
 
 function formatDate(d) {
@@ -616,6 +649,7 @@ function formatTime(d) {
     return new Date(d).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 }
 function escapeHtml(t) {
+    if (t == null) return '';
     const d = document.createElement('div');
     d.textContent = t;
     return d.innerHTML.replace(/\n/g, '<br>');
@@ -669,10 +703,6 @@ function setupEventListeners() {
     DOM.closeSidebar.addEventListener('click', () => closeSidebar());
     DOM.sidebarOverlay.addEventListener('click', () => closeSidebar());
 
-    // File
-    DOM.attachBtn.addEventListener('click', () => DOM.fileInput.click());
-    DOM.fileInput.addEventListener('change', handleFileSelect);
-    DOM.filePreviewRemove.addEventListener('click', clearFileAttachment);
 
     // Delete modal
     DOM.confirmDelete.addEventListener('click', confirmDeleteChat);
