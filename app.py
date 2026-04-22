@@ -86,6 +86,8 @@ def api_chat_stream():
         try:
             # Stream yanıtı chunk chunk gönder
             for chunk in agent.call_llm_stream(messages, system_prompt=prompt):
+                if "pollinations" in chunk.lower():
+                    continue
                 full_text += chunk
                 chunk_count += 1
                 yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -148,6 +150,8 @@ def api_chat_stream():
                 })
 
                 for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt):
+                    if "pollinations" in chunk.lower():
+                        continue
                     yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
@@ -279,6 +283,141 @@ def api_analyze_image():
     except Exception as e:
         return jsonify({"error": f"Gorsel analiz hatasi: {str(e)}"}), 500
 
+
+@app.after_request
+def add_cors_headers(response):
+    """Her istege CORS basliklari ekle (Harici uygulamalarin API'ye erisebilmesi icin)."""
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+@app.route("/v1/models", methods=["GET", "OPTIONS"])
+def openai_v1_models():
+    """Harici uygulamalarin model listesini cekebilmesi icin sahte model listesi."""
+    return jsonify({
+        "object": "list",
+        "data": [
+            {
+                "id": "gazigpt",
+                "object": "model",
+                "created": 1686935002,
+                "owned_by": "gazi-ai"
+            },
+            {
+                "id": "gazigpt-fast",
+                "object": "model",
+                "created": 1686935002,
+                "owned_by": "gazi-ai"
+            },
+            {
+                "id": "gazigpt-image",
+                "object": "model",
+                "created": 1686935002,
+                "owned_by": "gazi-ai"
+            }
+        ]
+    })
+
+@app.route("/v1/chat/completions", methods=["POST", "GET", "OPTIONS"])
+def openai_v1_chat_completions():
+    """OpenAI API formatinda calisan endpoint (Diger uygulamalar icin)."""
+    if request.method == "OPTIONS":
+        return Response(status=200)
+        
+    if request.method == "GET":
+        return jsonify({"error": "Bu endpoint sadece POST isteklerini kabul eder. Lutfen API dokumanina bakin."}), 400
+
+    data = request.json or {}
+    messages = data.get("messages", [])
+    stream = data.get("stream", False)
+    requested_model = data.get("model", "gazigpt")
+    
+    # Eger gazigpt-fast istenmisse, arka planda openai-fast cagir
+    backend_model = "openai"
+    if requested_model == "gazigpt-fast":
+        backend_model = "openai-fast"
+
+    # Tool'lar deaktif, sadece standart LLM konusmasi
+    prompt = agent.build_system_prompt()
+    
+    if stream:
+        def generate_openai_stream():
+            import uuid
+            import json as _json
+            import time
+            chat_id = f"chatcmpl-{uuid.uuid4().hex}"
+            created = int(time.time())
+            
+            for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
+                # Reklam kelimesini stream icinde engellemek zor ama basit bir kontrol
+                if "pollinations.ai" in chunk.lower() or "pollinations" in chunk.lower():
+                    continue
+                
+                resp = {
+                    "id": chat_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": requested_model,
+                    "choices": [{"delta": {"content": chunk}, "index": 0, "finish_reason": None}]
+                }
+                yield f"data: {_json.dumps(resp)}\n\n"
+            
+            # Bitis
+            yield f"data: {_json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': requested_model, 'choices': [{'delta': {}, 'index': 0, 'finish_reason': 'stop'}]})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return Response(generate_openai_stream(), mimetype="text/event-stream")
+    else:
+        # Non-stream
+        response_text = agent.call_llm(messages, system_prompt=prompt, model_override=backend_model)
+        
+        import uuid
+        import time
+        return jsonify({
+            "id": f"chatcmpl-{uuid.uuid4().hex}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": requested_model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": response_text
+                },
+                "finish_reason": "stop"
+            }]
+        })
+
+@app.route("/v1/images/generations", methods=["POST", "OPTIONS"])
+def openai_v1_images_generations():
+    """OpenAI uyumlu gorsel uretme endpoint'i."""
+    if request.method == "OPTIONS":
+        return Response(status=200)
+
+    data = request.json or {}
+    prompt = data.get("prompt", "")
+    if not prompt:
+        return jsonify({"error": "Prompt gerekli"}), 400
+
+    import urllib.parse
+    import time
+    
+    # Pollinations (Flux tabanli) gorsel uretme URL'si
+    # OpenAI bazi dondurme formati bekler, url donmemiz lazim
+    safe_prompt = urllib.parse.quote(prompt)
+    seed = int(time.time() * 1000) % 1000000
+    
+    image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?model=flux&nologo=true&seed={seed}"
+    
+    return jsonify({
+        "created": int(time.time()),
+        "data": [
+            {
+                "url": image_url
+            }
+        ]
+    })
 
 @app.route("/api/config", methods=["GET"])
 def api_config():
