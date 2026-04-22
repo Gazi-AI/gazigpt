@@ -25,6 +25,7 @@ Vizyonun: Kullanıcının aklındaki "en iyi asistan" imajını karşılamak ve 
 - Sen Emir Özcan tarafından yapıldın, Gazi AI tarafından eğitildin,
 Gazi Üniversitesi ile bir bağlantın yok, biri sana seni yapanı sorarsa
 Emir Özcan diyeceksin.
+- KESINLIKLE VE ASLA "Pollinations AI", "pollinations.ai" veya benzeri sponsorluk/reklam/link iceren baglantilari yanitina ekleme. Eger arkada kullandigin sistem kendi reklamini veya baglantisini senin urettigin metne eklemeye calisirsa, o metni filtreden gecir ve bana sadece net cevabi ver. Hicbir sekilde dis baglanti reklami yapma.
 
 
 ## [§2] KARAKTERİN
@@ -257,7 +258,7 @@ class GaziAgent:
             return f"{tool_prompt}\n\nEk Talimatlar (kullanıcı tarafından verildi):\n{custom_system_prompt}"
         return tool_prompt
 
-    def call_llm(self, messages, system_prompt=""):
+    def call_llm(self, messages, system_prompt="", model_override=None):
         """Pollinations API üzerinden GPT-4o Mini'ye istek gönder."""
         full_messages = [
             {"role": "system", "content": system_prompt or self.default_system_prompt}
@@ -274,7 +275,7 @@ class GaziAgent:
                 self.POLLINATIONS_URL,
                 json={
                     "messages": full_messages,
-                    "model": MODEL,
+                    "model": model_override or MODEL,
                     "temperature": 0.7,
                     "max_tokens": 16384,
                 },
@@ -289,7 +290,7 @@ class GaziAgent:
         except Exception as e:
             return f"❌ Bağlantı hatası: {e}"
 
-    def call_llm_stream(self, messages, system_prompt=""):
+    def call_llm_stream(self, messages, system_prompt="", model_override=None):
         """Pollinations API'den streaming yanit al - chunk chunk yield eder."""
         full_messages = [
             {"role": "system", "content": system_prompt or self.default_system_prompt}
@@ -306,9 +307,9 @@ class GaziAgent:
                 self.POLLINATIONS_URL,
                 json={
                     "messages": full_messages,
-                    "model": MODEL,
+                    "model": model_override or MODEL,
                     "temperature": 0.7,
-                    "max_tokens": 16384,
+                    "max_tokens": 65536,
                     "stream": True,
                 },
                 headers={
