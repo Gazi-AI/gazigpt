@@ -326,6 +326,28 @@ body {
     margin: 12px 0; border: 1px solid var(--border-color);
 }
 
+.message-actions {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.action-btn {
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    background: none; border: none; padding: 4px 8px;
+    color: var(--text-muted); cursor: pointer; border-radius: 4px;
+    font-size: 0.8rem; font-family: var(--font-main);
+    transition: all var(--transition-fast);
+}
+
+.action-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.action-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.action-btn.active svg { fill: currentColor; }
+
 /* ===== TYPING INDICATOR (message-style, assistant side) ===== */
 .typing-message {
     padding: 20px 24px;
