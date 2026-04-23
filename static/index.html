@@ -138,6 +138,9 @@
         </main>
     </div>
 
+    <!-- Audio element for TTS -->
+    <audio id="ttsAudio" style="display:none;"></audio>
+
     <!-- ===== MODAL: Silme Onayı ===== -->
     <div class="modal-overlay" id="deleteModal">
         <div class="modal-content">
@@ -173,6 +176,12 @@
                         <input type="checkbox" id="settingsEnterSend" checked>
                         <span class="toggle-slider"></span>
                     </label>
+                </div>
+                <div class="settings-group">
+                    <label class="settings-label">Ses (TTS):</label>
+                    <select id="settingsVoice" class="settings-select">
+                        <option value="">Yükleniyor...</option>
+                    </select>
                 </div>
                 <div class="settings-group">
                     <button class="settings-save-btn" id="saveSettingsBtn">Kaydet</button>
