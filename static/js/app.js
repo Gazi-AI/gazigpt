@@ -10,6 +10,7 @@ const state = {
     deleteTargetId: null,
     attachedFile: null,   // { name, content }
     abortController: null, // streaming iptal için
+    selectedModel: 'GaziGPT' // Default model
 };
 
 // ─── STORAGE HELPERS ─────────────────────────
@@ -293,6 +294,7 @@ async function sendMessage() {
                 message: message,
                 file_content: fileContent,
                 image_ratio: document.getElementById('imageRatio')?.value || '1:1',
+                model: state.selectedModel,
             }),
             signal: state.abortController.signal,
         });
@@ -336,7 +338,10 @@ async function sendMessage() {
 
                     if (ev.type === 'chunk') {
                         fullText += ev.content;
-                        bodyEl.innerHTML = prefixHTML + renderMarkdown(fullText) + suffixHTML;
+                        
+                        let formattedText = formatThinkTags(fullText);
+
+                        bodyEl.innerHTML = prefixHTML + renderMarkdown(formattedText) + suffixHTML;
                         bodyEl.querySelectorAll('pre code').forEach(b => {
                             if (!b.dataset.highlighted) {
                                 hljs.highlightElement(b);
@@ -418,6 +423,9 @@ ${toolBadges}
                         // Stream cursor'u temizle
                         const cursor = bodyEl.querySelector('.stream-cursor');
                         if (cursor) cursor.remove();
+                        
+                        // Düşünce kutularını kapat
+                        bodyEl.querySelectorAll('details.thinking-box').forEach(d => d.removeAttribute('open'));
 
                         // Son metni kaydet (Görsel ve Badge'leri dahil et)
                         finalText = (prefixHTML ? prefixHTML + "\n\n" : "") + fullText + (suffixHTML ? "\n\n" + suffixHTML : "");
@@ -542,10 +550,56 @@ function fixAvatarBg(el) {
 }
 
 // ─── MESSAGE RENDERING ──────────────────────
+function formatThinkTags(text) {
+    if (!/<\/?think>/i.test(text)) return text;
+    
+    let thoughts = [];
+    let answerText = text;
+    
+    // 1. Kapanmış tüm <think>...</think> bloklarını çıkar
+    let closedPattern = /<think>([\s\S]*?)<\/think>/gi;
+    let m;
+    let replacements = [];
+    while ((m = closedPattern.exec(text)) !== null) {
+        thoughts.push(m[1].trim());
+        replacements.push(m[0]);
+    }
+    for (const r of replacements) {
+        answerText = answerText.replace(r, '');
+    }
+    
+    // 2. Kapanmamış son <think>... bloğu (stream devam ediyor olabilir)
+    let unclosedMatch = answerText.match(/<think>([\s\S]*)$/i);
+    let isStillThinking = false;
+    if (unclosedMatch) {
+        thoughts.push(unclosedMatch[1].trim());
+        answerText = answerText.replace(unclosedMatch[0], '');
+        isStillThinking = true;
+    }
+    
+    // Artık kalan stray etiketleri temizle
+    answerText = answerText.replace(/<\/?think>/gi, '').trim();
+    
+    // Boş düşünceleri filtrele
+    thoughts = thoughts.filter(t => t.length > 0);
+    if (thoughts.length === 0) return answerText;
+    
+    let thoughtsText = thoughts.join('\n\n');
+    let openAttr = isStillThinking ? 'open' : '';
+    
+    return `\n\n<details class="thinking-box" ${openAttr}><summary class="thinking-header"><span class="think-icon">🧠</span> Düşünce Süreci</summary><div class="thinking-content">\n\n${thoughtsText}\n\n</div></details>\n\n${answerText}`;
+}
+
 function appendMessage(role, content, timestamp, scroll = true) {
     const isUser = role === 'user';
     const time = timestamp ? formatTime(timestamp) : formatTime(new Date().toISOString());
-    const rendered = isUser ? escapeHtml(content) : renderMarkdown(content);
+    let renderedContent = content;
+    
+    if (!isUser) {
+        renderedContent = formatThinkTags(renderedContent);
+    }
+    
+    const rendered = isUser ? escapeHtml(renderedContent) : renderMarkdown(renderedContent);
 
     const div = document.createElement('div');
     div.className = `message message-${role}`;
@@ -804,7 +858,9 @@ function showToast(msg, type = 'success') {
 // ─── ACTION BUTTON HANDLERS ──────────────────────
 function copyMessageText(btn) {
     const msgDiv = btn.closest('.message').querySelector('.message-body');
-    const text = msgDiv.innerText;
+    let clone = msgDiv.cloneNode(true);
+    clone.querySelectorAll('.thinking-box').forEach(b => b.remove());
+    const text = clone.innerText.replace(/📋 Kopyala/g, '').trim();
     navigator.clipboard.writeText(text).then(() => {
         showToast('Mesaj kopyalandı', 'success');
         btn.classList.add('active');
@@ -825,10 +881,14 @@ function dislikeMessage(btn) {
 }
 function shareMessage(btn) {
     const msgDiv = btn.closest('.message').querySelector('.message-body');
+    let clone = msgDiv.cloneNode(true);
+    clone.querySelectorAll('.thinking-box').forEach(b => b.remove());
+    const text = clone.innerText.replace(/📋 Kopyala/g, '').trim();
+    
     if (navigator.share) {
         navigator.share({
             title: 'GaziGPT Yanıtı',
-            text: msgDiv.innerText
+            text: text
         }).catch(err => console.log('Share error:', err));
     } else {
         copyMessageText(btn);
@@ -863,20 +923,43 @@ function regenerateMessage(btn) {
 
 let isPlayingTTS = false;
 let currentAudio = null;
+let currentTTSBtn = null;
+
+const ttsPlayIcon = `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+const ttsStopIcon = `<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"></rect></svg>`;
+
 function playTTSMessage(btn) {
     if (isPlayingTTS && currentAudio) {
         currentAudio.pause();
         currentAudio = null;
         isPlayingTTS = false;
-        btn.classList.remove('active');
+        if (currentTTSBtn) {
+            currentTTSBtn.classList.remove('active');
+            currentTTSBtn.innerHTML = ttsPlayIcon;
+            currentTTSBtn = null;
+        }
         return;
     }
     
+    // Eğer başka bir mesaj okunuyorsa onu durdur ve ikonunu düzelt
+    if (currentAudio) {
+        currentAudio.pause();
+        if (currentTTSBtn) {
+            currentTTSBtn.classList.remove('active');
+            currentTTSBtn.innerHTML = ttsPlayIcon;
+        }
+    }
+    
     const msgDiv = btn.closest('.message').querySelector('.message-body');
-    const text = msgDiv.innerText.replace(/📋 Kopyala/g, '').trim();
+    let clone = msgDiv.cloneNode(true);
+    clone.querySelectorAll('.thinking-box').forEach(b => b.remove());
+    const text = clone.innerText.replace(/📋 Kopyala/g, '').trim();
     if (!text) return;
 
+    currentTTSBtn = btn;
     btn.classList.add('active');
+    btn.innerHTML = ttsStopIcon;
+    
     const s = loadSettings();
     const voice = s.voice || "en-US-AvaMultilingualNeural";
     const audioUrl = `/api/tts?text=${encodeURIComponent(text.substring(0, 5000))}&voice=${encodeURIComponent(voice)}`;
@@ -887,12 +970,18 @@ function playTTSMessage(btn) {
         isPlayingTTS = true;
         currentAudio.onended = () => {
             isPlayingTTS = false;
-            btn.classList.remove('active');
+            if (currentTTSBtn === btn) {
+                btn.classList.remove('active');
+                btn.innerHTML = ttsPlayIcon;
+                currentTTSBtn = null;
+            }
         };
     }).catch(err => {
         showToast('Ses oynatılamadı.', 'error');
         btn.classList.remove('active');
+        btn.innerHTML = ttsPlayIcon;
         isPlayingTTS = false;
+        currentTTSBtn = null;
     });
 }
 
@@ -991,3 +1080,43 @@ function setupEventListeners() {
         if (e.key === 'Escape') { hideDeleteModal(); hideSettingsModal(); closeSidebar(); }
     });
 }
+
+// ─── MODEL SELECTOR ───────────────────────────
+function setupModelSelector() {
+    const btn = document.getElementById('modelSelectorBtn');
+    const dropdown = document.getElementById('modelDropdown');
+    const options = document.querySelectorAll('.model-option');
+    const currentName = document.getElementById('currentModelName');
+
+    if(!btn || !dropdown) return;
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('show');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
+            dropdown.classList.remove('show');
+        }
+    });
+
+    options.forEach(opt => {
+        opt.addEventListener('click', () => {
+            options.forEach(o => {
+                o.classList.remove('active');
+                o.querySelector('.model-check').innerHTML = '';
+            });
+            opt.classList.add('active');
+            opt.querySelector('.model-check').innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            
+            const modelName = opt.dataset.model;
+            currentName.textContent = modelName;
+            state.selectedModel = modelName;
+            dropdown.classList.remove('show');
+            
+            showToast(modelName + ' seçildi', 'success');
+        });
+    });
+}
+document.addEventListener('DOMContentLoaded', setupModelSelector);
