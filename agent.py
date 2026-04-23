@@ -11,7 +11,7 @@ konuşma akışını kontrol eden merkezi ajan.
 SYSTEM_PROMPT = """
 ## [§1] KİMLİK & MİSYON
 
-Sen **GaziGPT**'sin — Türkçe konuşan kullanıcılar için tasarlanmış,
+Senin adın **GaziGPT**. Türkçe konuşan kullanıcılar için tasarlanmış,
 çok yetenekli bir yapay zeka asistanısın.
 
 Misyonun: Her etkileşimde ölçülebilir değer üretmek.
@@ -292,108 +292,149 @@ class GaziAgent:
             return f"❌ Bağlantı hatası: {e}"
 
     def call_llm_stream(self, messages, system_prompt="", model_override=None):
-        """Pollinations API'den streaming yanit al - chunk chunk yield eder."""
+        """Pollinations API'den streaming yanit al - chunk chunk yield eder. Uzun yanitlarda otomatik devam eder."""
         full_messages = [
             {"role": "system", "content": system_prompt or self.default_system_prompt}
         ]
         for msg in messages[-10:]:
             full_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        # Debug: mesaj uzunluklarini goster
-        total_chars = sum(len(m["content"]) for m in full_messages)
-        print(f"[DEBUG LLM] Mesaj sayisi: {len(full_messages)}, Toplam karakter: {total_chars}")
+        max_continuations = 3
+        for attempt in range(max_continuations):
+            total_chars = sum(len(m.get("content", "")) for m in full_messages)
+            print(f"[DEBUG LLM] Mesaj sayisi: {len(full_messages)}, Toplam karakter: {total_chars} (Attempt: {attempt+1})")
 
-        resp = None
-        try:
-            resp = self.session.post(
-                self.POLLINATIONS_URL,
-                json={
-                    "messages": full_messages,
-                    "model": model_override or MODEL,
-                    "temperature": 0.7,
-                    "max_tokens": 16384,
-                    "stream": True,
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "text/event-stream",
-                    "Cache-Control": "no-cache",
-                },
-                timeout=(10, 300),
-                stream=True,
-            )
+            resp = None
+            generated_text_this_attempt = ""
+            finish_reason = None
             
-            print(f"[DEBUG LLM] Status: {resp.status_code}, Content-Type: {resp.headers.get('content-type', 'YOK')}")
-            
-            if resp.status_code != 200:
-                # Hata detayini oku
-                try:
-                    err_body = resp.text[:500]
-                    print(f"[DEBUG LLM] Hata body: {err_body}")
-                except:
-                    pass
-                yield f"API Hatasi (Kod: {resp.status_code})"
-                return
-
-            content_type = resp.headers.get("content-type", "")
-            
-            # Eger API SSE degil duz metin donuyorsa
-            if "text/event-stream" not in content_type and "application/json" not in content_type:
-                print(f"[DEBUG LLM] Duz metin modu (content-type: {content_type})")
-                chunk_count = 0
-                for chunk in resp.iter_content(chunk_size=512, decode_unicode=True):
-                    if chunk:
-                        chunk_count += 1
-                        yield chunk
-                print(f"[DEBUG LLM] Duz metin: {chunk_count} chunk")
-                return
-
-            # Pollinations SSE formatini parse et
-            print(f"[DEBUG LLM] SSE modu basliyor...")
-            line_count = 0
-            chunk_yielded = 0
-            for line in resp.iter_lines(chunk_size=512, decode_unicode=True):
-                line_count += 1
-                if line_count <= 3:
-                    print(f"[DEBUG LLM] Satir {line_count}: {line[:100] if line else '(bos)'}")
-                if not line:
-                    continue
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
+            try:
+                resp = self.session.post(
+                    self.POLLINATIONS_URL,
+                    json={
+                        "messages": full_messages,
+                        "model": model_override or MODEL,
+                        "temperature": 0.7,
+                        "max_tokens": 16384,
+                        "stream": True,
+                    },
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "text/event-stream",
+                        "Cache-Control": "no-cache",
+                    },
+                    timeout=(10, 300),
+                    stream=True,
+                )
+                
+                print(f"[DEBUG LLM] Status: {resp.status_code}, Content-Type: {resp.headers.get('content-type', 'YOK')}")
+                
+                if resp.status_code != 200:
                     try:
-                        data = json.loads(data_str)
-                        delta = data.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            chunk_yielded += 1
-                            yield content
-                    except json.JSONDecodeError:
-                        # JSON olmayan satir — duz metin olabilir
-                        if data_str.strip():
-                            chunk_yielded += 1
-                            yield data_str
-                elif not line.startswith(":"):
-                    # SSE degilse duz metin olarak don
-                    if line.strip():
-                        chunk_yielded += 1
-                        yield line
-            
-            print(f"[DEBUG LLM] SSE bitti: {line_count} satir, {chunk_yielded} chunk yield edildi")
+                        err_body = resp.text[:500]
+                        print(f"[DEBUG LLM] Hata body: {err_body}")
+                    except:
+                        pass
+                    yield f"API Hatasi (Kod: {resp.status_code})"
+                    return
 
-        except requests.exceptions.Timeout:
-            print("[DEBUG LLM] TIMEOUT!")
-            yield "Istek zaman asimina ugradi."
-        except Exception as e:
-            print(f"[DEBUG LLM] EXCEPTION: {e}")
-            yield f"Baglanti hatasi: {e}"
-        finally:
-            if resp is not None:
-                try:
-                    resp.close()
-                except:
-                    pass
+                content_type = resp.headers.get("content-type", "")
+                
+                if "text/event-stream" not in content_type and "application/json" not in content_type:
+                    print(f"[DEBUG LLM] Duz metin modu (content-type: {content_type})")
+                    chunk_count = 0
+                    for chunk in resp.iter_content(chunk_size=512, decode_unicode=True):
+                        if chunk:
+                            chunk_count += 1
+                            generated_text_this_attempt += chunk
+                            yield chunk
+                    print(f"[DEBUG LLM] Duz metin: {chunk_count} chunk")
+                    return
+
+                print(f"[DEBUG LLM] SSE modu basliyor...")
+                line_count = 0
+                chunk_yielded = 0
+                reasoning_started = False
+
+                for line in resp.iter_lines(chunk_size=512, decode_unicode=True):
+                    line_count += 1
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str.strip() == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                            choice = data.get("choices", [{}])[0]
+                            delta = choice.get("delta", {})
+                            
+                            if choice.get("finish_reason"):
+                                finish_reason = choice.get("finish_reason")
+                            
+                            reasoning = delta.get("reasoning_content", "")
+                            if reasoning:
+                                if not reasoning_started:
+                                    yield '<think>\n'
+                                    reasoning_started = True
+                                chunk_yielded += 1
+                                yield reasoning
+                                
+                            content = delta.get("content", "")
+                            if content:
+                                generated_text_this_attempt += content
+                                if reasoning_started:
+                                    yield '\n</think>\n\n'
+                                    reasoning_started = False
+                                chunk_yielded += 1
+                                yield content
+                        except json.JSONDecodeError:
+                            if data_str.strip():
+                                chunk_yielded += 1
+                                generated_text_this_attempt += data_str
+                                yield data_str
+                    elif not line.startswith(":"):
+                        if line.strip():
+                            chunk_yielded += 1
+                            generated_text_this_attempt += line
+                            yield line
+                
+                if reasoning_started:
+                    yield '\n</think>\n\n'
+                
+                print(f"[DEBUG LLM] SSE bitti: {line_count} satir, {chunk_yielded} chunk yield edildi, Finish: {finish_reason}")
+
+                if finish_reason == "length":
+                    print("[DEBUG LLM] Uzunluk siniri asildi, otomatik devam ediliyor...")
+                    full_messages.append({"role": "assistant", "content": generated_text_this_attempt})
+                    
+                    last_words = " ".join(generated_text_this_attempt.split()[-15:])
+                    continue_prompt = (
+                        f"Cevabın uzunluk sınırına takılarak yarıda kesildi. "
+                        f"En son şu kelimelerde kalmıştın: '... {last_words}'\n\n"
+                        f"LÜTFEN özet yapma, giriş cümlesi kurma ve önceki yazdıklarını TEKRARLAMA. "
+                        f"Sadece ve sadece kaldığın bu noktadan itibaren cümleni ve metnini tamamlamaya devam et. "
+                        f"Herhangi bir düşünce (<think>) etiketi KULLANMA."
+                    )
+                    full_messages.append({"role": "user", "content": continue_prompt})
+                    continue
+                else:
+                    break
+
+            except requests.exceptions.Timeout:
+                print("[DEBUG LLM] TIMEOUT!")
+                yield "Istek zaman asimina ugradi."
+                break
+            except Exception as e:
+                print(f"[DEBUG LLM] EXCEPTION: {e}")
+                yield f"Baglanti hatasi: {e}"
+                break
+            finally:
+                if resp is not None:
+                    try:
+                        resp.close()
+                    except:
+                        pass
 
     def call_llm_fast(self, prompt_text, system_prompt=""):
         """GET tabanli hizli yanit API'si - dusunmeden hizli cevap verir."""
