@@ -11,3 +11,4 @@ wikipedia==1.4.0
 deep-translator==1.11.4
 python-dateutil==2.9.0
 gunicorn
+gradio_client
