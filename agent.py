@@ -244,6 +244,7 @@ class GaziAgent:
     """
 
     POLLINATIONS_URL = "https://text.pollinations.ai/openai/chat/completions"
+    POLLINATIONS_FAST_URL = "https://text.pollinations.ai/"
 
     def __init__(self):
         self.tool_manager = ToolManager()
@@ -302,6 +303,7 @@ class GaziAgent:
         total_chars = sum(len(m["content"]) for m in full_messages)
         print(f"[DEBUG LLM] Mesaj sayisi: {len(full_messages)}, Toplam karakter: {total_chars}")
 
+        resp = None
         try:
             resp = self.session.post(
                 self.POLLINATIONS_URL,
@@ -309,7 +311,7 @@ class GaziAgent:
                     "messages": full_messages,
                     "model": model_override or MODEL,
                     "temperature": 0.7,
-                    "max_tokens": 65536,
+                    "max_tokens": 16384,
                     "stream": True,
                 },
                 headers={
@@ -317,7 +319,7 @@ class GaziAgent:
                     "Accept": "text/event-stream",
                     "Cache-Control": "no-cache",
                 },
-                timeout=180,
+                timeout=(10, 300),
                 stream=True,
             )
             
@@ -339,18 +341,18 @@ class GaziAgent:
             if "text/event-stream" not in content_type and "application/json" not in content_type:
                 print(f"[DEBUG LLM] Duz metin modu (content-type: {content_type})")
                 chunk_count = 0
-                for chunk in resp.iter_content(chunk_size=64, decode_unicode=True):
+                for chunk in resp.iter_content(chunk_size=512, decode_unicode=True):
                     if chunk:
                         chunk_count += 1
                         yield chunk
                 print(f"[DEBUG LLM] Duz metin: {chunk_count} chunk")
                 return
 
-            # Pollinations SSE formatini parse et (OpenAI uyumlu)
+            # Pollinations SSE formatini parse et
             print(f"[DEBUG LLM] SSE modu basliyor...")
             line_count = 0
             chunk_yielded = 0
-            for line in resp.iter_lines(chunk_size=1, decode_unicode=True):
+            for line in resp.iter_lines(chunk_size=512, decode_unicode=True):
                 line_count += 1
                 if line_count <= 3:
                     print(f"[DEBUG LLM] Satir {line_count}: {line[:100] if line else '(bos)'}")
@@ -386,6 +388,109 @@ class GaziAgent:
         except Exception as e:
             print(f"[DEBUG LLM] EXCEPTION: {e}")
             yield f"Baglanti hatasi: {e}"
+        finally:
+            if resp is not None:
+                try:
+                    resp.close()
+                except:
+                    pass
+
+    def call_llm_fast(self, prompt_text, system_prompt=""):
+        """GET tabanli hizli yanit API'si - dusunmeden hizli cevap verir."""
+        import urllib.parse
+        
+        encoded_prompt = urllib.parse.quote(prompt_text)
+        params = {
+            "model": "openai",
+            "system": system_prompt or self.default_system_prompt,
+        }
+        
+        try:
+            resp = self.session.get(
+                f"{self.POLLINATIONS_FAST_URL}{encoded_prompt}",
+                params=params,
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                return resp.text
+            return f"API Hatasi (Kod: {resp.status_code})"
+        except requests.exceptions.Timeout:
+            return "Istek zaman asimina ugradi."
+        except Exception as e:
+            return f"Baglanti hatasi: {e}"
+
+    def call_llm_fast_stream(self, prompt_text, system_prompt=""):
+        """GET tabanli hizli yanit API'si - streaming modunda."""
+        import urllib.parse
+        import re as _re
+        
+        encoded_prompt = urllib.parse.quote(prompt_text)
+        params = {
+            "model": "openai",
+            "system": system_prompt or self.default_system_prompt,
+            "stream": "true",
+        }
+        
+        resp = None
+        try:
+            resp = self.session.get(
+                f"{self.POLLINATIONS_FAST_URL}{encoded_prompt}",
+                params=params,
+                stream=True,
+                timeout=(10, 300),
+            )
+            
+            if resp.status_code != 200:
+                yield f"API Hatasi (Kod: {resp.status_code})"
+                return
+            
+            partial_data = ""
+            for chunk in resp.iter_content(chunk_size=512, decode_unicode=True):
+                if chunk:
+                    partial_data += chunk
+                    while "\n" in partial_data:
+                        line, partial_data = partial_data.split("\n", 1)
+                        line = line.strip()
+                        if line.startswith("data: "):
+                            content_json = line[6:]
+                            if content_json == "[DONE]":
+                                return
+                            try:
+                                if content_json.startswith("{"):
+                                    data_obj = json.loads(content_json)
+                                    # Skip reasoning/thought content
+                                    if "reasoning_content" in data_obj:
+                                        continue
+                                    if "choices" in data_obj:
+                                        delta = data_obj["choices"][0].get("delta", {})
+                                        if "reasoning_content" in delta:
+                                            continue
+                                        chunk_text = delta.get("content", "")
+                                        if chunk_text:
+                                            yield chunk_text
+                                    else:
+                                        chunk_text = data_obj.get("content", "")
+                                        if chunk_text:
+                                            yield chunk_text
+                                else:
+                                    yield content_json
+                            except:
+                                yield content_json
+                        elif line and not line.startswith(":"):
+                            if line.strip():
+                                yield line
+                            
+        except requests.exceptions.Timeout:
+            yield "Istek zaman asimina ugradi."
+        except Exception as e:
+            yield f"Baglanti hatasi: {e}"
+        finally:
+            if resp is not None:
+                try:
+                    resp.close()
+                except:
+                    pass
+
     def _find_bare_json_tools(self, text):
         """Kod bloku olmadan duz yazilmis JSON tool cagrilarini bul."""
         results = []
