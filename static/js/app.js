@@ -65,6 +65,7 @@ const DOM = {
     settingsFontSize: $('#settingsFontSize'),
     fontSizeValue: $('#fontSizeValue'),
     settingsEnterSend: $('#settingsEnterSend'),
+    settingsVoice: $('#settingsVoice'),
     clearAllChatsBtn: $('#clearAllChatsBtn'),
     closeSidebar: $('#closeSidebar'),
     sidebarOverlay: $('#sidebarOverlay'),
@@ -78,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applySettings();
     setupEventListeners();
     loadLogo();
+    loadVoices();
 });
 
 async function loadLogo() {
@@ -250,7 +252,7 @@ async function sendMessage() {
 
     // Eğer görsel eklenmişse önce analiz et
     if (attachedFile && attachedFile.isImage) {
-        appendMessage('assistant', '🔍 Görsel analiz ediliyor (Florence-2)...', undefined, true);
+        appendMessage('assistant', '🔍 Görsel analiz ediliyor...', undefined, true);
         try {
             const analyzeRes = await fetch('/api/analyze-image', {
                 method: 'POST',
@@ -259,7 +261,7 @@ async function sendMessage() {
             });
             const analyzeData = await analyzeRes.json();
             if (analyzeData.success) {
-                fileContent = `\n\n--- Eklenen Gorsel Analizi (Florence-2) ---\n${analyzeData.description}\n--- Gorsel Analizi Sonu ---`;
+                fileContent = `\n\n--- Eklenen Gorsel Analizi ---\n${analyzeData.description}\n--- Gorsel Analizi Sonu ---`;
                 imageAnalyzed = true;
             } else {
                 fileContent = `\n\n--- Gorsel analizi basarisiz: ${analyzeData.error || 'Bilinmeyen hata'} ---`;
@@ -378,12 +380,22 @@ async function sendMessage() {
                         prefixHTML = '';
                         for (const tr of toolResults) {
                             if (tr.image_url) {
-                                prefixHTML += `<div class="generated-image-container">
-<img src="${tr.image_url}" alt="Generated Image" loading="eager">
-<div class="generated-image-actions">
-<a href="${tr.image_url}" target="_blank" class="btn-fullscreen">🔍 Tam Ekran</a>
-<a href="${tr.image_url}" download="gorsel.jpg" class="btn-download">💾 İndir</a>
-</div>
+                                const uid = Math.random().toString(36).substr(2, 9);
+                                prefixHTML += `
+<div class="generated-image-container">
+    <div id="loader_${uid}" class="image-generating-box" style="margin:0; max-width:none; border:none; border-radius:0; border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div class="image-gen-shimmer"></div>
+        <div class="image-gen-content">
+            <div class="image-gen-spinner"></div>
+            <div class="image-gen-text">🎨 Görsel Üretiliyor...</div>
+            <div class="image-gen-hint">Lütfen Bekleyin (Yaklaşık 10-20 saniye)</div>
+        </div>
+    </div>
+    <img id="img_${uid}" src="${tr.image_url}" alt="Generated Image" loading="eager" style="display:none;" onload="document.getElementById('loader_${uid}').style.display='none'; this.style.display='block';">
+    <div class="generated-image-actions">
+        <a href="${tr.image_url}" target="_blank" class="btn-fullscreen">🔍 Tam Ekran</a>
+        <a href="${tr.image_url}" download="gorsel.jpg" class="btn-download">💾 İndir</a>
+    </div>
 </div>\n\n`;
                             }
                         }
@@ -429,6 +441,31 @@ ${toolBadges}
         // Mesajı kaydet
         if (finalText || fullText) {
             chat.messages.push({ role: 'assistant', content: finalText || fullText, timestamp: ats });
+            // Action bar'ı göster ve innerHTML'ini doldur
+            const actionsDiv = msgDiv.querySelector('.message-actions');
+            if (actionsDiv) {
+                actionsDiv.style.display = 'flex';
+                actionsDiv.innerHTML = `
+                    <button class="action-btn" onclick="copyMessageText(this)" title="Kopyala">
+                        <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                    <button class="action-btn" onclick="likeMessage(this)" title="Beğen">
+                        <svg viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                    </button>
+                    <button class="action-btn" onclick="dislikeMessage(this)" title="Beğenme">
+                        <svg viewBox="0 0 24 24"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path></svg>
+                    </button>
+                    <button class="action-btn" onclick="shareMessage(this)" title="Paylaş">
+                        <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                    </button>
+                    <button class="action-btn" onclick="regenerateMessage(this)" title="Yeniden Oluştur">
+                        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    </button>
+                    <button class="action-btn" onclick="playTTSMessage(this)" title="Okuma (TTS)">
+                        <svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                    </button>
+                `;
+            }
         }
 
         // Son güvenlik: cursor kaldıysa temizle
@@ -483,6 +520,7 @@ function createStreamingMessage(timestamp) {
             <span class="message-time">${time}</span>
         </div>
         <div class="message-body"><span class="stream-cursor">▊</span></div>
+        <div class="message-actions" style="display:none;"></div>
     `;
     DOM.chatMessages.appendChild(div);
     fixAvatarBg(div);
@@ -519,6 +557,29 @@ function appendMessage(role, content, timestamp, scroll = true) {
         </div>
         <div class="message-body">${rendered}</div>
     `;
+    if (!isUser) {
+        div.innerHTML += `
+        <div class="message-actions">
+            <button class="action-btn" onclick="copyMessageText(this)" title="Kopyala">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="action-btn" onclick="likeMessage(this)" title="Beğen">
+                <svg viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+            </button>
+            <button class="action-btn" onclick="dislikeMessage(this)" title="Beğenme">
+                <svg viewBox="0 0 24 24"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path></svg>
+            </button>
+            <button class="action-btn" onclick="shareMessage(this)" title="Paylaş">
+                <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+            </button>
+            <button class="action-btn" onclick="regenerateMessage(this)" title="Yeniden Oluştur">
+                <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+            <button class="action-btn" onclick="playTTSMessage(this)" title="Okuma (TTS)">
+                <svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            </button>
+        </div>`;
+    }
     DOM.chatMessages.appendChild(div);
     if (!isUser) fixAvatarBg(div);
 
@@ -648,6 +709,7 @@ function showSettingsModal() {
     DOM.settingsFontSize.value = s.font_size || 14;
     DOM.fontSizeValue.textContent = s.font_size || 14;
     DOM.settingsEnterSend.checked = s.send_with_enter !== false;
+    DOM.settingsVoice.value = s.voice || "en-US-AvaMultilingualNeural";
     DOM.settingsModal.classList.add('show');
 }
 function hideSettingsModal() { DOM.settingsModal.classList.remove('show'); }
@@ -656,6 +718,7 @@ function saveSettings() {
     const s = {
         font_size: parseInt(DOM.settingsFontSize.value),
         send_with_enter: DOM.settingsEnterSend.checked,
+        voice: DOM.settingsVoice.value,
     };
     saveSettingsToStorage(s);
     applySettings();
@@ -736,6 +799,119 @@ function showToast(msg, type = 'success') {
     t.innerHTML = `<span>${type === 'success' ? '✅' : '❌'}</span><span>${msg}</span>`;
     c.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+// ─── ACTION BUTTON HANDLERS ──────────────────────
+function copyMessageText(btn) {
+    const msgDiv = btn.closest('.message').querySelector('.message-body');
+    const text = msgDiv.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Mesaj kopyalandı', 'success');
+        btn.classList.add('active');
+        setTimeout(() => btn.classList.remove('active'), 2000);
+    });
+}
+function likeMessage(btn) {
+    btn.classList.toggle('active');
+    const dislikeBtn = btn.parentElement.querySelector('button[title="Beğenme"]');
+    if (dislikeBtn) dislikeBtn.classList.remove('active');
+    if (btn.classList.contains('active')) showToast('Mesaj beğenildi', 'success');
+}
+function dislikeMessage(btn) {
+    btn.classList.toggle('active');
+    const likeBtn = btn.parentElement.querySelector('button[title="Beğen"]');
+    if (likeBtn) likeBtn.classList.remove('active');
+    if (btn.classList.contains('active')) showToast('Mesaj beğenilmedi', 'success');
+}
+function shareMessage(btn) {
+    const msgDiv = btn.closest('.message').querySelector('.message-body');
+    if (navigator.share) {
+        navigator.share({
+            title: 'GaziGPT Yanıtı',
+            text: msgDiv.innerText
+        }).catch(err => console.log('Share error:', err));
+    } else {
+        copyMessageText(btn);
+        showToast('Paylaşma desteklenmiyor. Mesaj kopyalandı.', 'success');
+    }
+}
+function regenerateMessage(btn) {
+    if (!state.currentChatId || state.isLoading) return;
+    const all = loadChatsFromStorage();
+    const chat = all[state.currentChatId];
+    if (!chat || chat.messages.length < 2) return;
+    
+    // Son asistan mesajını ve varsa hatalı/yarım mesajı kaldır
+    while (chat.messages.length > 0 && chat.messages[chat.messages.length - 1].role !== 'user') {
+        chat.messages.pop();
+    }
+    saveChatsToStorage(all);
+    showChatView(chat.messages);
+    
+    // Son kullanıcı mesajını bul
+    const lastUserMsg = chat.messages[chat.messages.length - 1];
+    if (lastUserMsg) {
+        // Yeniden oluşturmak için input'a alıp göndermeye gerek yok, doğrudan backend'i tetikleyebiliriz
+        // ama mevcut sendMessage mantığını kullanmak daha kolay:
+        DOM.messageInput.value = lastUserMsg.content;
+        chat.messages.pop(); // user mesajını da çıkarıp tekrar ekleteceğiz
+        saveChatsToStorage(all);
+        showChatView(chat.messages);
+        sendMessage();
+    }
+}
+
+let isPlayingTTS = false;
+let currentAudio = null;
+function playTTSMessage(btn) {
+    if (isPlayingTTS && currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+        isPlayingTTS = false;
+        btn.classList.remove('active');
+        return;
+    }
+    
+    const msgDiv = btn.closest('.message').querySelector('.message-body');
+    const text = msgDiv.innerText.replace(/📋 Kopyala/g, '').trim();
+    if (!text) return;
+
+    btn.classList.add('active');
+    const s = loadSettings();
+    const voice = s.voice || "en-US-AvaMultilingualNeural";
+    const audioUrl = `/api/tts?text=${encodeURIComponent(text.substring(0, 5000))}&voice=${encodeURIComponent(voice)}`;
+    
+    currentAudio = document.getElementById('ttsAudio');
+    currentAudio.src = audioUrl;
+    currentAudio.play().then(() => {
+        isPlayingTTS = true;
+        currentAudio.onended = () => {
+            isPlayingTTS = false;
+            btn.classList.remove('active');
+        };
+    }).catch(err => {
+        showToast('Ses oynatılamadı.', 'error');
+        btn.classList.remove('active');
+        isPlayingTTS = false;
+    });
+}
+
+async function loadVoices() {
+    try {
+        const res = await fetch('/api/voices');
+        const voices = await res.json();
+        DOM.settingsVoice.innerHTML = '';
+        voices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.ShortName;
+            opt.textContent = v.FriendlyName;
+            DOM.settingsVoice.appendChild(opt);
+        });
+        const s = loadSettings();
+        if (s.voice) DOM.settingsVoice.value = s.voice;
+    } catch (e) {
+        DOM.settingsVoice.innerHTML = '<option value="">Sesler yüklenemedi</option>';
+    }
 }
 
 // ─── EVENT LISTENERS ─────────────────────────
