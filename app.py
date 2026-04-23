@@ -70,6 +70,28 @@ def api_chat_stream():
     user_message = data.get("message", "").strip()
     file_content = data.get("file_content", "")
     image_ratio = data.get("image_ratio", "1:1")
+    model_id = data.get("model", "GaziGPT")
+    backend_model = "openai"
+    system_prompt_ext = ""
+
+    if model_id == "GaziGPT":
+        backend_model = "openai-fast" # Hızlı model
+    elif model_id == "GaziGPT Thinking":
+        backend_model = "openai-fast"
+        system_prompt_ext = (
+            "Senin çok güçlü bir analitik 'İç Ses' (Düşünce) yeteneğin var. "
+            "Kullanıcıya asıl cevabı vermeden önce her zaman içinden detaylıca düşün, durumu analiz et ve plan yap. "
+            "Düşünce sürecin API tarafından otomatik ayrıştırılmaktadır, bu yüzden yanıtında kendin asla <think> veya </think> gibi etiketler KULLANMA. "
+            "Sadece içinden özgürce düşün, ardından kullanıcıya doğrudan ve doğal bir şekilde asıl cevabını ver."
+        )
+    elif model_id == "GaziGPT Extended":
+        backend_model = "openai-fast"
+        system_prompt_ext = (
+            "Senin adın GaziGPT. Sen bu modelin en gelişmiş versiyonusun. "
+            "Kullanıcıya yanıt vermeden önce durum değerlendirmesi, çok derin ve kapsamlı bir 'İç Ses' analizi yapmalısın. "
+            "Bu analiz süreci API tarafından otomatik olarak yönetilmektedir, bu yüzden yanıtında kendin asla <think> veya </think> gibi XML etiketleri KULLANMA. "
+            "Sadece en derin analitik düşünceni yap, ardından kullanıcıya en detaylı, net ve nihai cevabını sun."
+        )
 
     if not user_message:
         return jsonify({"error": "Mesaj boş olamaz."}), 400
@@ -78,7 +100,7 @@ def api_chat_stream():
         user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
 
     messages.append({"role": "user", "content": user_message})
-    prompt = agent.build_system_prompt()
+    prompt = agent.build_system_prompt(system_prompt_ext)
 
     def generate():
         import json as _json
@@ -87,7 +109,7 @@ def api_chat_stream():
 
         try:
             # Stream yanıtı chunk chunk gönder
-            for chunk in agent.call_llm_stream(messages, system_prompt=prompt):
+            for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
                 if "pollinations" in chunk.lower():
                     continue
                 full_text += chunk
@@ -139,19 +161,31 @@ def api_chat_stream():
 
                 # Tool sonuçlarını AI'a gönder ve ikinci yanıtı stream et
                 msgs2 = messages.copy()
-                msgs2.append({"role": "assistant", "content": processed})
+                
+                # Önceki yanıtın içindeki düşünce etiketlerini sistem notuna çevir ki 
+                # AI kendi düşüncesini 'normal cevap' sanmasın ve eğer think içinde tool çalıştıysa sonuçları silinmesin.
+                import re
+                processed_clean = re.sub(r'<think>', '\n[Sistem Notu: Kendi İç Ses / Düşünce Sürecin Başlangıcı]\n', processed, flags=re.IGNORECASE)
+                processed_clean = re.sub(r'<\/think>', '\n[Sistem Notu: Kendi İç Ses / Düşünce Sürecin Bitişi]\n', processed_clean, flags=re.IGNORECASE)
+                processed_clean = processed_clean.strip()
+                
+                msgs2.append({"role": "assistant", "content": processed_clean})
+                
+                second_user_msg = (
+                    "[Sistem: Tool sonuclari basariyla alindi. "
+                    "Sonuclari kullaniciya guzel, anlasilir ve detayli sekilde sun. "
+                    "ONEMLI UYARI: Eger gorsel (image) uretildiyse, sistem gorseli zaten ekrana basti! "
+                    "Bu yuzden yanitinda KESINLIKLE markdown gorsel formatini (![...](...)) KULLANMA. Sadece gorselin olusturuldugunu soyle ve detaylarindan bahset. "
+                    "Tekrar tool cagirma. tool_call blogu kullanma. "
+                    "En önemlisi: Yeni yanıtında da içinden durum değerlendirmesi yapabilirsin ama kendin asla <think> etiketi yazma, sadece doğal asıl cevabını ver!]"
+                )
+                
                 msgs2.append({
                     "role": "user",
-                    "content": (
-                        "[Sistem: Tool sonuclari basariyla alindi. "
-                        "Sonuclari kullaniciya guzel, anlasilir ve detayli sekilde sun. "
-                        "ONEMLI UYARI: Eger gorsel (image) uretildiyse, sistem gorseli zaten ekrana basti! "
-                        "Bu yuzden yanitinda KESINLIKLE markdown gorsel formatini (![...](...)) KULLANMA. Sadece gorselin olusturuldugunu soyle ve detaylarindan bahset. "
-                        "Tekrar tool cagirma. tool_call blogu kullanma.]"
-                    )
+                    "content": second_user_msg
                 })
 
-                for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt):
+                for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt, model_override=backend_model):
                     if "pollinations" in chunk.lower():
                         continue
                     yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
