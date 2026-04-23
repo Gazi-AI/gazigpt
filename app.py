@@ -10,7 +10,9 @@ import json
 import time
 import webbrowser
 import threading
-from flask import Flask, request, jsonify, send_from_directory, Response
+import asyncio
+import edge_tts
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -205,7 +207,7 @@ def api_image_proxy():
 
 @app.route("/api/analyze-image", methods=["POST"])
 def api_analyze_image():
-    """Florence-2 ile gorsel analizi yap."""
+    """Gorsel analizi yap."""
     import base64
     import uuid
     import tempfile
@@ -233,7 +235,7 @@ def api_analyze_image():
         with open(filepath, "wb") as f:
             f.write(img_bytes)
 
-        # Florence-2 ile analiz
+        # Gorsel analiz motoru
         from gradio_client import Client, handle_file
 
         client_vision = Client("gokaygokay/Florence-2")
@@ -282,6 +284,104 @@ def api_analyze_image():
 
     except Exception as e:
         return jsonify({"error": f"Gorsel analiz hatasi: {str(e)}"}), 500
+
+
+@app.route("/api/voices", methods=["GET"])
+def get_voices():
+    try:
+        # Multilingual voices from ai-by-chatgpt project
+        extra_voices = [
+            {'ShortName': 'en-AU-WilliamMultilingualNeural', 'FriendlyName': 'William', 'Locale': 'tr-TR', 'Gender': 'Male'},
+            {'ShortName': 'en-US-AndrewMultilingualNeural', 'FriendlyName': 'Andrew', 'Locale': 'tr-TR', 'Gender': 'Male'},
+            {'ShortName': 'en-US-AvaMultilingualNeural', 'FriendlyName': 'Ava', 'Locale': 'tr-TR', 'Gender': 'Female'},
+            {'ShortName': 'en-US-BrianMultilingualNeural', 'FriendlyName': 'Brian', 'Locale': 'tr-TR', 'Gender': 'Male'},
+            {'ShortName': 'en-US-EmmaMultilingualNeural', 'FriendlyName': 'Emma', 'Locale': 'tr-TR', 'Gender': 'Female'},
+            {'ShortName': 'fr-FR-VivienneMultilingualNeural', 'FriendlyName': 'Vivienne', 'Locale': 'tr-TR', 'Gender': 'Female'},
+            {'ShortName': 'fr-FR-RemyMultilingualNeural', 'FriendlyName': 'Remy', 'Locale': 'tr-TR', 'Gender': 'Male'},
+            {'ShortName': 'de-DE-SeraphinaMultilingualNeural', 'FriendlyName': 'Seraphina', 'Locale': 'tr-TR', 'Gender': 'Female'},
+            {'ShortName': 'de-DE-FlorianMultilingualNeural', 'FriendlyName': 'Florian', 'Locale': 'tr-TR', 'Gender': 'Male'},
+            {'ShortName': 'it-IT-GiuseppeMultilingualNeural', 'FriendlyName': 'Giuseppe', 'Locale': 'tr-TR', 'Gender': 'Male'},
+            {'ShortName': 'ko-KR-HyunsuMultilingualNeural', 'FriendlyName': 'Hyunsu', 'Locale': 'tr-TR', 'Gender': 'Male'},
+            {'ShortName': 'pt-BR-ThalitaMultilingualNeural', 'FriendlyName': 'Thalita', 'Locale': 'tr-TR', 'Gender': 'Female'},
+        ]
+        return jsonify(extra_voices)
+    except:
+        return jsonify([])
+
+@app.route("/api/tts")
+def tts():
+    text = request.args.get("text", "")
+    voice = request.args.get("voice", "en-US-AvaMultilingualNeural")
+    rate = request.args.get("rate", "+0%")
+    pitch = request.args.get("pitch", "+0Hz")
+    
+    if not text:
+        return Response("No text provided", status=400)
+
+    # Handle variants
+    v = voice
+    r = rate
+    p = pitch
+
+    def generate():
+        # Using a new loop for the streaming thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Edge-TTS Streaming
+            communicate = edge_tts.Communicate(text, v, rate=r, pitch=p)
+            
+            # Helper to run the async generator
+            async_gen = communicate.stream()
+            while True:
+                try:
+                    chunk = loop.run_until_complete(async_gen.__anext__())
+                    if chunk["type"] == "audio":
+                        yield chunk["data"]
+                except StopAsyncIteration:
+                    break
+        except Exception as e:
+            print(f"Streaming Error: {e}")
+        finally:
+            loop.close()
+
+    return Response(stream_with_context(generate()), mimetype="audio/mpeg")
+
+
+@app.route("/api/chat/fast", methods=["POST"])
+def api_chat_fast():
+    """Hizli yanit endpoint'i - dusunmeden hizlica cevap verir."""
+    data = request.json or {}
+    user_message = data.get("message", "").strip()
+
+    if not user_message:
+        return jsonify({"error": "Mesaj bos olamaz."}), 400
+
+    prompt = agent.build_system_prompt()
+
+    def generate():
+        import json as _json
+        full_text = ""
+        try:
+            for chunk in agent.call_llm_fast_stream(user_message, system_prompt=prompt):
+                if "pollinations" in chunk.lower():
+                    continue
+                full_text += chunk
+                yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+        yield f"data: {_json.dumps({'type': 'done'})}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.after_request
