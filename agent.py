@@ -585,7 +585,7 @@ class GaziAgent:
         Paralel değil, sıralı çalışır — rate limit'e takılmaz."""
         
         results = {}
-        temperatures = [0.5, 0.7]  # Düşük = dengeli/kesin, Yüksek = yaratıcı
+        temperatures = [0.6, 0.8]  # Düşük = dengeli/kesin, Yüksek = yaratıcı
         
         for i, temp in enumerate(temperatures):
             label = f"openai_v{i+1}"
