@@ -529,93 +529,45 @@ class GaziAgent:
     #  STRATEJİ 3: TREE OF THOUGHTS (Çoklu Düşünce Dalları)
     # ═══════════════════════════════════════════════════════════
     def tree_of_thoughts(self, question, system_prompt=""):
-        """Aynı soruyu 2 farklı perspektiften SIRA SIRA düşündürüp en iyisini seçer."""
+        """Aynı soruyu 2 farklı perspektiften SIRA SIRA düşündürüp en iyisini seçer (Streaming)."""
         
         perspectives = [
-            f"Bu soruya ADIM ADIM mantıksal çıkarım (step-by-step reasoning) ile yaklaş. "
-            f"Her adımı açıkça belirt:\n\n{question}",
-            
-            f"Bu soruya ÖNCE sonucu tahmin et, sonra GERİYE DOĞRU çalışarak doğrula "
-            f"(backward reasoning):\n\n{question}",
+            f"Bu soruya ADIM ADIM mantıksal çıkarım (step-by-step reasoning) ile yaklaş. Her adımı açıkça belirt:\n\n{question}",
+            f"Bu soruya ÖNCE sonucu tahmin et, sonra GERİYE DOĞRU çalışarak doğrula (backward reasoning):\n\n{question}",
         ]
         
         results = []
-        
         for idx, prompt in enumerate(perspectives):
-            print(f"[ToT] Perspektif {idx+1}/{len(perspectives)} çağrılıyor...")
-            try:
-                resp = self.session.post(
-                    self.POLLINATIONS_URL,
-                    json={
-                        "messages": [
-                            {"role": "system", "content": system_prompt or self.default_system_prompt},
-                            {"role": "user", "content": prompt},
-                        ],
-                        "model": "openai",
-                        "temperature": 0.4 + (idx * 0.3),
-                        "max_tokens": 2048,
-                    },
-                    headers={"Content-Type": "application/json"},
-                    timeout=45,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    if not content:
-                        content = resp.text[:2000]
-                    if content and len(content) > 50:
-                        results.append(content)
-                else:
-                    print(f"[ToT] Perspektif {idx+1} hata: HTTP {resp.status_code}")
-            except Exception as e:
-                print(f"[ToT] Perspektif {idx+1} hatası: {e}")
+            yield ("chunk", f"\n\n> 🔍 **Perspektif {idx+1}:**\n")
+            text = ""
+            for chunk in self.call_llm_stream([{"role": "user", "content": prompt}], system_prompt=system_prompt, model_override="openai", temperature=0.4 + (idx * 0.3)):
+                text += chunk
+                yield ("chunk", chunk)
+            if text:
+                results.append(text)
         
-        if len(results) == 0:
-            return None
-        elif len(results) == 1:
-            return results[0]
-        
-        return results  # Sentezde birleştirilecek
+        yield ("result", results)
 
     # ═══════════════════════════════════════════════════════════
     #  STRATEJİ 5: MULTI-MODEL ENSEMBLE (Sıralı Çoklu Çağrı)
     # ═══════════════════════════════════════════════════════════
     def ensemble_call(self, messages, system_prompt=""):
-        """Aynı modeli farklı sıcaklıklarla SIRA SIRA çağırır.
-        Paralel değil, sıralı çalışır — rate limit'e takılmaz."""
+        """Aynı modeli farklı sıcaklıklarla SIRA SIRA çağırır (Streaming)."""
         
         results = {}
         temperatures = [0.6, 0.8]  # Düşük = dengeli/kesin, Yüksek = yaratıcı
         
         for i, temp in enumerate(temperatures):
             label = f"openai_v{i+1}"
-            print(f"[Ensemble] Çağrı {i+1}/{len(temperatures)} (temp={temp})")
-            try:
-                resp = self.session.post(
-                    self.POLLINATIONS_URL,
-                    json={
-                        "messages": [
-                            {"role": "system", "content": system_prompt or self.default_system_prompt}
-                        ] + messages[-8:],
-                        "model": self.ENSEMBLE_MODEL,
-                        "temperature": temp,
-                        "max_tokens": 3000,
-                    },
-                    headers={"Content-Type": "application/json"},
-                    timeout=45,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    if not content:
-                        content = resp.text[:3000]
-                    results[label] = content
-                else:
-                    print(f"[Ensemble] Çağrı {i+1} hata: HTTP {resp.status_code}")
-            except Exception as e:
-                print(f"[Ensemble] Çağrı {i+1} hatası: {e}")
-        
-        return results
+            yield ("chunk", f"\n\n> ⚖️ **Analiz {i+1} (Sıcaklık: {temp}):**\n")
+            text = ""
+            for chunk in self.call_llm_stream(messages[-8:], system_prompt=system_prompt, model_override=self.ENSEMBLE_MODEL, temperature=temp):
+                text += chunk
+                yield ("chunk", chunk)
+            if text:
+                results[label] = text
+                
+        yield ("result", results)
 
     # ═══════════════════════════════════════════════════════════
     #  EXTENDED PIPELINE — Tüm Stratejileri Birleştiren Ana Akış
@@ -659,11 +611,24 @@ class GaziAgent:
         
         # ── Aşama 4: Tree of Thoughts (çoklu düşünme) ──
         yield ("phase", "thinking")
-        tot_results = self.tree_of_thoughts(enhanced_question, system_prompt)
+        yield ("chunk", "<think>\n")
+        tot_results = []
+        for ev_type, ev_data in self.tree_of_thoughts(enhanced_question, system_prompt):
+            if ev_type == "chunk":
+                yield ("chunk", ev_data)
+            elif ev_type == "result":
+                tot_results = ev_data
         
         # ── Aşama 5: Multi-Model Ensemble (sıralı çağrı) ──
         yield ("phase", "ensemble")
-        ensemble_results = self.ensemble_call(condensed_messages, system_prompt)
+        ensemble_results = {}
+        for ev_type, ev_data in self.ensemble_call(condensed_messages, system_prompt):
+            if ev_type == "chunk":
+                yield ("chunk", ev_data)
+            elif ev_type == "result":
+                ensemble_results = ev_data
+                
+        yield ("chunk", "\n</think>\n\n")
         
         # Tüm perspektifleri topla
         all_perspectives = []
@@ -763,7 +728,7 @@ class GaziAgent:
         except Exception as e:
             return f"❌ Bağlantı hatası: {e}"
 
-    def call_llm_stream(self, messages, system_prompt="", model_override=None):
+    def call_llm_stream(self, messages, system_prompt="", model_override=None, temperature=0.7):
         """Pollinations API'den streaming yanit al - chunk chunk yield eder. Uzun yanitlarda otomatik devam eder."""
         full_messages = [
             {"role": "system", "content": system_prompt or self.default_system_prompt}
@@ -786,7 +751,7 @@ class GaziAgent:
                     json={
                         "messages": full_messages,
                         "model": model_override or MODEL,
-                        "temperature": 0.7,
+                        "temperature": temperature,
                         "max_tokens": 4096,
                         "stream": True,
                     },
