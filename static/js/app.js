@@ -284,6 +284,9 @@ async function sendMessage() {
 
     let fullText = '';
     const ats = new Date().toISOString();
+    
+    // Uzun süreli hafızayı localStorage'dan al
+    const longTermMemory = JSON.parse(localStorage.getItem('gazigpt_long_term_memory') || '[]');
 
     try {
         const res = await fetch('/api/chat/stream', {
@@ -295,6 +298,7 @@ async function sendMessage() {
                 file_content: fileContent,
                 image_ratio: document.getElementById('imageRatio')?.value || '1:1',
                 model: state.selectedModel,
+                long_term_memory: longTermMemory,
             }),
             signal: state.abortController.signal,
         });
@@ -350,6 +354,56 @@ async function sendMessage() {
                         });
                         scrollToBottom();
 
+                    } else if (ev.type === 'extended_phase') {
+                        // GaziGPT Extended — aşama göstergesi
+                        const phaseId = ev.phase || '';
+                        const phaseLabel = ev.label || '⏳ İşleniyor...';
+                        const phaseColors = {
+                            meta_prompt: '#e879f9',
+                            semantic_memory: '#a78bfa',
+                            memory: '#8b5cf6',
+                            thinking: '#f59e0b',
+                            ensemble: '#06b6d4',
+                            synthesis: '#10b981',
+                            verification: '#22c55e',
+                        };
+                        const color = phaseColors[phaseId] || '#6366f1';
+                        
+                        // Önceki aşama göstergesini tamamlandı yap
+                        const prevPhase = bodyEl.querySelector('.extended-phase-active');
+                        if (prevPhase) {
+                            prevPhase.classList.remove('extended-phase-active');
+                            prevPhase.querySelector('.phase-spinner')?.remove();
+                            const checkMark = document.createElement('span');
+                            checkMark.style.cssText = 'color:#22c55e;margin-right:6px;';
+                            checkMark.textContent = '✓';
+                            prevPhase.prepend(checkMark);
+                            prevPhase.style.opacity = '0.6';
+                        }
+                        
+                        // synthesis aşamasında eski aşamaları temizle
+                        if (phaseId === 'synthesis') {
+                            bodyEl.querySelectorAll('.extended-phase-indicator').forEach(el => el.remove());
+                        }
+                        
+                        // Yeni aşama göstergesi ekle (synthesis ve sonrası hariç)
+                        if (phaseId !== 'synthesis' && phaseId !== 'verification') {
+                            const phaseEl = document.createElement('div');
+                            phaseEl.className = 'extended-phase-indicator extended-phase-active';
+                            phaseEl.style.cssText = `
+                                display:flex; align-items:center; gap:10px; padding:10px 16px;
+                                background:${color}15; border-left:3px solid ${color};
+                                border-radius:0 10px 10px 0; margin:4px 0; font-size:0.88rem;
+                                color:${color}; animation:fadeIn 0.3s ease;
+                            `;
+                            phaseEl.innerHTML = `
+                                <div class="phase-spinner" style="width:16px;height:16px;border:2px solid ${color}40;border-top-color:${color};border-radius:50%;animation:tool-spin 0.7s linear infinite;"></div>
+                                <span>${phaseLabel}</span>
+                            `;
+                            bodyEl.appendChild(phaseEl);
+                        }
+                        scrollToBottom();
+
                     } else if (ev.type === 'tool_start') {
                         const toolCount = ev.count || 1;
                         const tools = ev.tools || [];
@@ -386,6 +440,7 @@ async function sendMessage() {
                         for (const tr of toolResults) {
                             if (tr.image_url) {
                                 const uid = Math.random().toString(36).substr(2, 9);
+                                const proxyUrl = '/api/image-proxy?url=' + encodeURIComponent(tr.image_url);
                                 prefixHTML += `
 <div class="generated-image-container">
     <div id="loader_${uid}" class="image-generating-box" style="margin:0; max-width:none; border:none; border-radius:0; border-bottom:1px solid rgba(255,255,255,0.06);">
@@ -396,10 +451,10 @@ async function sendMessage() {
             <div class="image-gen-hint">Lütfen Bekleyin (Yaklaşık 10-20 saniye)</div>
         </div>
     </div>
-    <img id="img_${uid}" src="${tr.image_url}" alt="Generated Image" loading="eager" style="display:none;" onload="document.getElementById('loader_${uid}').style.display='none'; this.style.display='block';">
+    <img id="img_${uid}" src="${proxyUrl}" alt="Generated Image" loading="eager" style="display:none;" onload="document.getElementById('loader_${uid}').style.display='none'; this.style.display='block';">
     <div class="generated-image-actions">
-        <a href="${tr.image_url}" target="_blank" class="btn-fullscreen">🔍 Tam Ekran</a>
-        <a href="${tr.image_url}" download="gorsel.jpg" class="btn-download">💾 İndir</a>
+        <button onclick="openImageLightbox(document.getElementById('img_${uid}').src)" class="btn-fullscreen">🔍 Tam Ekran</button>
+        <button onclick="downloadImage(document.getElementById('img_${uid}').src, 'gorsel.png')" class="btn-download">💾 İndir</button>
     </div>
 </div>\n\n`;
                             }
@@ -449,6 +504,16 @@ ${toolBadges}
         // Mesajı kaydet
         if (finalText || fullText) {
             chat.messages.push({ role: 'assistant', content: finalText || fullText, timestamp: ats });
+            
+            // Uzun süreli hafızaya kaydet
+            if (state.selectedModel === 'GaziGPT Extended') {
+                longTermMemory.push({ user: message, ai: finalText || fullText });
+                if (longTermMemory.length > 50) {
+                    longTermMemory.shift();
+                }
+                localStorage.setItem('gazigpt_long_term_memory', JSON.stringify(longTermMemory));
+            }
+            
             // Action bar'ı göster ve innerHTML'ini doldur
             const actionsDiv = msgDiv.querySelector('.message-actions');
             if (actionsDiv) {
@@ -1120,3 +1185,95 @@ function setupModelSelector() {
     });
 }
 document.addEventListener('DOMContentLoaded', setupModelSelector);
+
+// ─── IMAGE LIGHTBOX (Tam Ekran Modal) ────────
+function openImageLightbox(src) {
+    let overlay = document.getElementById('imageLightboxOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'imageLightboxOverlay';
+        overlay.style.cssText = `
+            position:fixed; top:0; left:0; width:100vw; height:100vh;
+            background:rgba(0,0,0,0.92); z-index:99999;
+            display:flex; align-items:center; justify-content:center;
+            cursor:zoom-out; opacity:0; transition:opacity 0.25s ease;
+            backdrop-filter:blur(8px);
+        `;
+        overlay.innerHTML = `
+            <button id="lightboxClose" style="
+                position:absolute; top:20px; right:24px;
+                background:rgba(255,255,255,0.12); border:none;
+                color:#fff; font-size:28px; width:44px; height:44px;
+                border-radius:50%; cursor:pointer; display:flex;
+                align-items:center; justify-content:center;
+                backdrop-filter:blur(4px); transition:background 0.2s;
+            " onmouseover="this.style.background='rgba(255,255,255,0.25)'"
+               onmouseout="this.style.background='rgba(255,255,255,0.12)'"
+            >✕</button>
+            <img id="lightboxImg" style="
+                max-width:92vw; max-height:90vh;
+                border-radius:12px; object-fit:contain;
+                box-shadow:0 20px 60px rgba(0,0,0,0.6);
+                transition:transform 0.3s ease;
+            " alt="Görsel">
+            <div style="
+                position:absolute; bottom:24px; display:flex; gap:12px;
+            ">
+                <button onclick="downloadImage(document.getElementById('lightboxImg').src, 'gorsel.png')" style="
+                    background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.15);
+                    color:#fff; padding:10px 20px; border-radius:10px;
+                    cursor:pointer; font-size:14px; backdrop-filter:blur(4px);
+                    transition:background 0.2s;
+                " onmouseover="this.style.background='rgba(255,255,255,0.25)'"
+                   onmouseout="this.style.background='rgba(255,255,255,0.12)'"
+                >💾 İndir</button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        
+        // Kapatma eventleri
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay || e.target.id === 'lightboxClose') {
+                closeLightbox();
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && overlay.style.display === 'flex') {
+                closeLightbox();
+            }
+        });
+    }
+    
+    const img = document.getElementById('lightboxImg');
+    img.src = src;
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+}
+
+function closeLightbox() {
+    const overlay = document.getElementById('imageLightboxOverlay');
+    if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => { overlay.style.display = 'none'; }, 250);
+    }
+}
+
+// ─── IMAGE DOWNLOAD (URL gizli) ─────────────
+async function downloadImage(src, filename) {
+    try {
+        const response = await fetch(src);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'gorsel.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Görsel indiriliyor...', 'success');
+    } catch (err) {
+        // Fallback: doğrudan aç
+        window.open(src, '_blank');
+    }
+}
