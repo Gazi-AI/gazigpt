@@ -40,13 +40,13 @@ def execute(params):
     seed = str(random.randint(1, 999999999))
     encoded_prompt = urllib.parse.quote(prompt)
     
-    # model=flux parametresi width/height ile çakışıp 500 hatası verdiği için model parametresi kaldırıldı ve boyutlar eklendi
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?nologo=true&seed={seed}&width={width}&height={height}"
+    # model=zimage ile görsel üretme
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?model=zimage&nologo=true&seed={seed}&width={width}&height={height}"
     
     return {
         "image_url": image_url,
         "prompt": prompt,
-        "style": "Flux.1",
+        "style": "zimage",
         "seed": seed,
         "info": "Görsel başarıyla oluşturuldu."
     }
