@@ -152,6 +152,10 @@ def api_chat_stream():
                         label = phase_labels.get(event_data, f"⏳ {event_data}...")
                         yield f"data: {_json.dumps({'type': 'extended_phase', 'phase': event_data, 'label': label}, ensure_ascii=False)}\n\n"
                     
+                    elif event_type == "ping":
+                        # Send a tiny empty message to keep connection alive
+                        yield f": ping\n\n"
+                    
                     elif event_type == "chunk":
                         if "pollinations" in event_data.lower():
                             continue
