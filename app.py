@@ -176,14 +176,9 @@ def api_chat_stream():
                     
                     elif event_type == "done":
                         # Chain of Verification (Aşama 5)
-                        if verification_text and len(verification_text) > 100:
-                            user_q = user_message[:500]
-                            correction = agent.verify_response(user_q, verification_text)
-                            if correction:
-                                # Hata bulundu — düzeltme notu ekle
-                                correction_msg = f"\n\n---\n\n> ⚠️ **Doğrulama Notu:** {correction}\n"
-                                yield f"data: {_json.dumps({'type': 'chunk', 'content': correction_msg}, ensure_ascii=False)}\n\n"
-                                full_text += correction_msg
+                        # Optimizasyon: Sentezleme aşaması zaten çok güçlü olduğu için, 10 saniyelik gecikmeyi 
+                        # önlemek adına son doğrulama çağrısı kaldırıldı.
+                        pass
                 
                 # Extended pipeline bitti — tool check yap
                 # (aşağıdaki normal tool check akışına düşecek)
