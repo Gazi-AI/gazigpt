@@ -39,6 +39,25 @@ def serve_static(filename):
     return send_from_directory("static", filename)
 
 
+@app.route("/api/image-proxy")
+def image_proxy():
+    """Görsel URL'sini proxy'ler — kaynak domain gizlenir."""
+    import requests as req_lib
+    url = request.args.get("url", "")
+    if not url:
+        return jsonify({"error": "URL gerekli"}), 400
+    try:
+        resp = req_lib.get(url, timeout=60, stream=True)
+        content_type = resp.headers.get("Content-Type", "image/png")
+        return Response(
+            resp.iter_content(chunk_size=8192),
+            content_type=content_type,
+            headers={"Cache-Control": "public, max-age=86400"}
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     """Mesaj gönder, AI yanıtı al (non-stream fallback)."""
@@ -71,6 +90,7 @@ def api_chat_stream():
     file_content = data.get("file_content", "")
     image_ratio = data.get("image_ratio", "1:1")
     model_id = data.get("model", "GaziGPT")
+    long_term_memory = data.get("long_term_memory", [])
     backend_model = "openai"
     system_prompt_ext = ""
 
@@ -85,12 +105,16 @@ def api_chat_stream():
             "Sadece içinden özgürce düşün, ardından kullanıcıya doğrudan ve doğal bir şekilde asıl cevabını ver."
         )
     elif model_id == "GaziGPT Extended":
-        backend_model = "openai-fast"
+        backend_model = "extended"  # Özel pipeline kullanılacak
         system_prompt_ext = (
-            "Senin adın GaziGPT. Sen bu modelin en gelişmiş versiyonusun. "
-            "Kullanıcıya yanıt vermeden önce durum değerlendirmesi, çok derin ve kapsamlı bir 'İç Ses' analizi yapmalısın. "
-            "Bu analiz süreci API tarafından otomatik olarak yönetilmektedir, bu yüzden yanıtında kendin asla <think> veya </think> gibi XML etiketleri KULLANMA. "
-            "Sadece en derin analitik düşünceni yap, ardından kullanıcıya en detaylı, net ve nihai cevabını sun."
+            "Senin adın GaziGPT Extended. Sen en gelişmiş, en akıllı yapay zeka modelisin. "
+            "Cevaplarını verirken:\n"
+            "1. Soruyu birden fazla perspektiften analiz et\n"
+            "2. Mantık zincirini adım adım kur\n"
+            "3. Olası hataları kontrol et\n"
+            "4. En doğru ve kapsamlı cevabı oluştur\n"
+            "5. Türkçe, akıcı ve profesyonel yanıt ver\n"
+            "Düşünce sürecin API tarafından yönetilmektedir, yanıtında kendin <think> veya </think> etiketleri KULLANMA."
         )
 
     if not user_message:
@@ -108,13 +132,66 @@ def api_chat_stream():
         chunk_count = 0
 
         try:
-            # Stream yanıtı chunk chunk gönder
-            for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
-                if "pollinations" in chunk.lower():
-                    continue
-                full_text += chunk
-                chunk_count += 1
-                yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            # ── GaziGPT Extended: Çok aşamalı akıllı pipeline ──
+            if backend_model == "extended":
+                phase_labels = {
+                    "meta_prompt": "🧠 Soru zenginleştiriliyor...",
+                    "semantic_memory": "💾 Uzun süreli hafıza taranıyor...",
+                    "memory": "📚 Bağlam analiz ediliyor...",
+                    "thinking": "🌳 Çoklu perspektiflerden düşünülüyor...",
+                    "ensemble": "🤖 Çoklu analiz doğrulanıyor...",
+                    "synthesis": "⚡ Sentez oluşturuluyor...",
+                    "verification": "✅ Doğrulama yapılıyor...",
+                }
+                
+                verification_text = ""  # Son cevap, doğrulama için
+                used_fallback = False
+                
+                for event_type, event_data in agent.extended_pipeline_stream(messages, system_prompt=prompt, memory_list=long_term_memory):
+                    if event_type == "phase":
+                        label = phase_labels.get(event_data, f"⏳ {event_data}...")
+                        yield f"data: {_json.dumps({'type': 'extended_phase', 'phase': event_data, 'label': label}, ensure_ascii=False)}\n\n"
+                    
+                    elif event_type == "chunk":
+                        if "pollinations" in event_data.lower():
+                            continue
+                        full_text += event_data
+                        verification_text += event_data
+                        chunk_count += 1
+                        yield f"data: {_json.dumps({'type': 'chunk', 'content': event_data}, ensure_ascii=False)}\n\n"
+                    
+                    elif event_type == "fallback":
+                        used_fallback = True
+                        # Pipeline başarısız — normal stream'e geç
+                        for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override="openai"):
+                            if "pollinations" in chunk.lower():
+                                continue
+                            full_text += chunk
+                            chunk_count += 1
+                            yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+                    
+                    elif event_type == "done":
+                        # Chain of Verification (Aşama 5)
+                        if verification_text and len(verification_text) > 100:
+                            user_q = user_message[:500]
+                            correction = agent.verify_response(user_q, verification_text)
+                            if correction:
+                                # Hata bulundu — düzeltme notu ekle
+                                correction_msg = f"\n\n---\n\n> ⚠️ **Doğrulama Notu:** {correction}\n"
+                                yield f"data: {_json.dumps({'type': 'chunk', 'content': correction_msg}, ensure_ascii=False)}\n\n"
+                                full_text += correction_msg
+                
+                # Extended pipeline bitti — tool check yap
+                # (aşağıdaki normal tool check akışına düşecek)
+                
+            else:
+                # ── Normal model akışı (GaziGPT ve Thinking) ──
+                for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
+                    if "pollinations" in chunk.lower():
+                        continue
+                    full_text += chunk
+                    chunk_count += 1
+                    yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
 
             print(f"[DEBUG] Stream bitti: {chunk_count} chunk, {len(full_text)} karakter")
             if full_text[:200]:
@@ -123,6 +200,83 @@ def api_chat_stream():
             # Stream bitti — tool call var mı kontrol et
             tool_matches = agent.extract_tool_calls(full_text)
             print(f"[DEBUG] Tool matches: {len(tool_matches)}")
+
+            # ── FALLBACK: Thinking model düşüncede tool planladı ama content boş kaldıysa ──
+            if not tool_matches:
+                import re as _re
+                # Düşünme içeriğini ve asıl content'i ayır
+                think_match = _re.search(r'<think>([\s\S]*?)</think>', full_text, _re.IGNORECASE)
+                content_only = _re.sub(r'<think>[\s\S]*?</think>', '', full_text, flags=_re.IGNORECASE).strip()
+                
+                if think_match and len(content_only) < 20:
+                    think_text = think_match.group(1).lower()
+                    registered_tools = list(agent.tool_manager.tools.keys())
+                    
+                    for tool_name in registered_tools:
+                        if tool_name in think_text:
+                            print(f"[DEBUG] FALLBACK: Thinking model '{tool_name}' aracini planlamis ama content bos. Otomatik calistiriliyor...")
+                            
+                            # generate_image için özel işlem
+                            if tool_name == "generate_image":
+                                # Kullanıcının mesajından İngilizce prompt üret
+                                eng_prompt = ""
+                                
+                                # Öncelik 1: Modelin düşünce sürecinden İngilizce anahtar kelimeleri çıkar
+                                try:
+                                    import re as _re2
+                                    think_content = _re.search(r'<think>([\s\S]*?)</think>', full_text, _re.IGNORECASE)
+                                    if think_content:
+                                        t = think_content.group(1)
+                                        # Düşüncede "want a X image/picture" veya "X image" kalıbını ara
+                                        patterns = [
+                                            r'(?:description|prompt)[:\s]+["\']([^"\']{5,})["\']',
+                                            r'(?:want|need|generate|produce|create)\s+(?:a|an)\s+(.+?)(?:\.|,|image|picture|photo)',
+                                            r'(?:they want|user wants?)\s+(?:a|an)\s+(.+?)(?:\.|,|image|picture)',
+                                        ]
+                                        for pattern in patterns:
+                                            match = _re2.search(pattern, t, _re2.IGNORECASE)
+                                            if match:
+                                                candidate = match.group(1).strip().strip('"').strip("'")
+                                                if len(candidate) >= 3 and not any(c in candidate for c in "çşğüöıÇŞĞÜÖİ"):
+                                                    # "cat" → "a cute cat, digital art, high quality"
+                                                    eng_prompt = f"{candidate}, digital art, highly detailed, beautiful lighting, 8K"
+                                                    print(f"[DEBUG] Dusunceden prompt: {eng_prompt[:80]}")
+                                                    break
+                                except Exception:
+                                    pass
+                                
+                                # Öncelik 2: Kullanıcının Türkçe mesajından anahtar kelimeyi çıkar ve basit çeviri yap
+                                if not eng_prompt or len(eng_prompt) < 10:
+                                    # Türkçe çizim/üretim fiillerini kaldır, kalan kısım konuyu verir
+                                    clean_msg = user_message.lower()
+                                    for remove_word in ["bana", "bir", "resim", "resmi", "çiz", "çizer", "misin", "lütfen",
+                                                        "görsel", "oluştur", "üret", "yap", "fotoğraf", "tablo", "en", 
+                                                        "olsun", "şirin", "tatlı", "güzel", "harika", "muhteşem"]:
+                                        clean_msg = clean_msg.replace(remove_word, "")
+                                    clean_msg = " ".join(clean_msg.split()).strip()
+                                    
+                                    if clean_msg and len(clean_msg) >= 2:
+                                        eng_prompt = f"{clean_msg}, digital art, highly detailed, beautiful composition, 8K quality"
+                                    else:
+                                        eng_prompt = "a beautiful artistic digital illustration, vibrant colors, 8K"
+                                
+                                # Pollinations reklamlarını temizle
+                                for bad in ["pollinations", "http://", "https://", "Pollinations"]:
+                                    eng_prompt = eng_prompt.replace(bad, "")
+                                eng_prompt = eng_prompt.strip().strip('"').strip("'")
+                                if len(eng_prompt) < 10:
+                                    eng_prompt = "a beautiful artistic digital illustration"
+                                
+                                print(f"[DEBUG] FALLBACK gorsel promptu: {eng_prompt[:100]}")
+                                
+                                # Synthetic tool call oluştur
+                                synthetic_tool_json = _json.dumps({"tool": "generate_image", "params": {"prompt": eng_prompt, "ratio": image_ratio}})
+                                tool_matches = [synthetic_tool_json]
+                            else:
+                                # Diğer tool'lar için basit fallback
+                                synthetic_tool_json = _json.dumps({"tool": tool_name, "params": {}})
+                                tool_matches = [synthetic_tool_json]
+                            break
 
             if tool_matches:
                 # Tool isimlerini bulalım
@@ -144,7 +298,21 @@ def api_chat_stream():
 
                 # Tool'ları çalıştır (image_ratio'yu inject et)
                 agent._current_image_ratio = image_ratio
-                processed, tool_results = agent.execute_tool_calls(full_text)
+
+                # Eğer synthetic tool call ise, doğrudan çalıştır
+                tool_results = []
+                for m in tool_matches:
+                    try:
+                        parsed = _json.loads(m)
+                        if isinstance(parsed, dict) and "tool" in parsed:
+                            result = agent.tool_manager.execute_tool(parsed["tool"], parsed.get("params", {}))
+                            tool_results.append({"tool": parsed["tool"], "params": parsed.get("params", {}), "result": result})
+                    except:
+                        pass
+                
+                # Normal tool extraction fallback
+                if not tool_results:
+                    processed, tool_results = agent.execute_tool_calls(full_text)
 
                 # Tool sonuçlarını frontend'e gönder (image URL dahil)
                 tool_names = [tr['tool'] for tr in tool_results]
@@ -159,36 +327,46 @@ def api_chat_stream():
 
                 yield f"data: {_json.dumps({'type': 'tool_done', 'tools': tool_names, 'results': tool_data}, ensure_ascii=False)}\n\n"
 
-                # Tool sonuçlarını AI'a gönder ve ikinci yanıtı stream et
-                msgs2 = messages.copy()
+                # Tool sonuçlarını kullanıcıya sun
+                # İkinci LLM çağrısı yerine doğrudan cevap oluştur (thinking model boş content sorunu)
+                has_image = any("generate_image" in tr.get("tool", "") for tr in tool_results)
                 
-                # Önceki yanıtın içindeki düşünce etiketlerini sistem notuna çevir ki 
-                # AI kendi düşüncesini 'normal cevap' sanmasın ve eğer think içinde tool çalıştıysa sonuçları silinmesin.
-                import re
-                processed_clean = re.sub(r'<think>', '\n[Sistem Notu: Kendi İç Ses / Düşünce Sürecin Başlangıcı]\n', processed, flags=re.IGNORECASE)
-                processed_clean = re.sub(r'<\/think>', '\n[Sistem Notu: Kendi İç Ses / Düşünce Sürecin Bitişi]\n', processed_clean, flags=re.IGNORECASE)
-                processed_clean = processed_clean.strip()
-                
-                msgs2.append({"role": "assistant", "content": processed_clean})
-                
-                second_user_msg = (
-                    "[Sistem: Tool sonuclari basariyla alindi. "
-                    "Sonuclari kullaniciya guzel, anlasilir ve detayli sekilde sun. "
-                    "ONEMLI UYARI: Eger gorsel (image) uretildiyse, sistem gorseli zaten ekrana basti! "
-                    "Bu yuzden yanitinda KESINLIKLE markdown gorsel formatini (![...](...)) KULLANMA. Sadece gorselin olusturuldugunu soyle ve detaylarindan bahset. "
-                    "Tekrar tool cagirma. tool_call blogu kullanma. "
-                    "En önemlisi: Yeni yanıtında da içinden durum değerlendirmesi yapabilirsin ama kendin asla <think> etiketi yazma, sadece doğal asıl cevabını ver!]"
-                )
-                
-                msgs2.append({
-                    "role": "user",
-                    "content": second_user_msg
-                })
+                if has_image:
+                    # Görsel üretildiyse, basit bir onay mesajı gönder
+                    img_result = next((tr for tr in tool_results if tr["tool"] == "generate_image"), None)
+                    if img_result:
+                        img_prompt = img_result.get("params", {}).get("prompt", "")
+                        confirm_msg = f"Görseliniz başarıyla oluşturuldu! 🎨"
+                        if img_prompt:
+                            confirm_msg += f"\n\n**Kullanılan prompt:** {img_prompt}"
+                        
+                        # Chunk chunk gönder (frontend'in alışık olduğu format)
+                        for word in confirm_msg.split(" "):
+                            yield f"data: {_json.dumps({'type': 'chunk', 'content': word + ' '}, ensure_ascii=False)}\n\n"
+                else:
+                    # Diğer tool'lar için basit bir 'openai' (non-thinking) model ile özet yap
+                    msgs2 = messages.copy()
+                    
+                    import re
+                    processed_text = "Araç çalıştırıldı."
+                    for tr in tool_results:
+                        result_json = _json.dumps(tr["result"].get("result", tr["result"]), ensure_ascii=False)
+                        processed_text += f"\n\n**{tr['tool']} aracı kullanıldı:**\n```json\n{result_json}\n```"
+                    
+                    msgs2.append({"role": "assistant", "content": processed_text})
+                    msgs2.append({
+                        "role": "user",
+                        "content": (
+                            "[Sistem: Tool sonuclari alindi. Kullaniciya kisa ve net sekilde sun. "
+                            "Tekrar tool cagirma. Markdown gorsel formatini kullanma.]"
+                        )
+                    })
 
-                for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt, model_override=backend_model):
-                    if "pollinations" in chunk.lower():
-                        continue
-                    yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+                    # Non-thinking model kullan (openai, openai-fast değil)
+                    for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt, model_override="openai"):
+                        if "pollinations" in chunk.lower():
+                            continue
+                        yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
@@ -426,102 +604,7 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
     return response
 
-@app.route("/v1/models", methods=["GET", "OPTIONS"])
-def openai_v1_models():
-    """Harici uygulamalarin model listesini cekebilmesi icin sahte model listesi."""
-    return jsonify({
-        "object": "list",
-        "data": [
-            {
-                "id": "gazigpt",
-                "object": "model",
-                "created": 1686935002,
-                "owned_by": "gazi-ai"
-            },
-            {
-                "id": "gazigpt-fast",
-                "object": "model",
-                "created": 1686935002,
-                "owned_by": "gazi-ai"
-            },
-            {
-                "id": "gazigpt-image",
-                "object": "model",
-                "created": 1686935002,
-                "owned_by": "gazi-ai"
-            }
-        ]
-    })
 
-@app.route("/v1/chat/completions", methods=["POST", "GET", "OPTIONS"])
-def openai_v1_chat_completions():
-    """OpenAI API formatinda calisan endpoint (Diger uygulamalar icin)."""
-    if request.method == "OPTIONS":
-        return Response(status=200)
-        
-    if request.method == "GET":
-        return jsonify({"error": "Bu endpoint sadece POST isteklerini kabul eder. Lutfen API dokumanina bakin."}), 400
-
-    data = request.json or {}
-    messages = data.get("messages", [])
-    stream = data.get("stream", False)
-    requested_model = data.get("model", "gazigpt")
-    
-    # Eger gazigpt-fast istenmisse, arka planda openai-fast cagir
-    backend_model = "openai"
-    if requested_model == "gazigpt-fast":
-        backend_model = "openai-fast"
-
-    # Tool'lar deaktif, sadece standart LLM konusmasi
-    prompt = agent.build_system_prompt()
-    
-    if stream:
-        def generate_openai_stream():
-            import uuid
-            import json as _json
-            import time
-            chat_id = f"chatcmpl-{uuid.uuid4().hex}"
-            created = int(time.time())
-            
-            for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
-                # Reklam kelimesini stream icinde engellemek zor ama basit bir kontrol
-                if "pollinations.ai" in chunk.lower() or "pollinations" in chunk.lower():
-                    continue
-                
-                resp = {
-                    "id": chat_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": requested_model,
-                    "choices": [{"delta": {"content": chunk}, "index": 0, "finish_reason": None}]
-                }
-                yield f"data: {_json.dumps(resp)}\n\n"
-            
-            # Bitis
-            yield f"data: {_json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': requested_model, 'choices': [{'delta': {}, 'index': 0, 'finish_reason': 'stop'}]})}\n\n"
-            yield "data: [DONE]\n\n"
-
-        return Response(generate_openai_stream(), mimetype="text/event-stream")
-    else:
-        # Non-stream
-        response_text = agent.call_llm(messages, system_prompt=prompt, model_override=backend_model)
-        
-        import uuid
-        import time
-        return jsonify({
-            "id": f"chatcmpl-{uuid.uuid4().hex}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": requested_model,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": response_text
-                },
-                "finish_reason": "stop"
-            }]
-        })
 
 @app.route("/v1/images/generations", methods=["POST", "OPTIONS"])
 def openai_v1_images_generations():
@@ -553,6 +636,222 @@ def openai_v1_images_generations():
         ]
     })
 
+# ═══════════════════════════════════════════════════════════════
+#  OpenAI UYUMLU API  — /v1/chat/completions
+# ═══════════════════════════════════════════════════════════════
+
+# API anahtarı çevre değişkeninden alınır, yoksa varsayılan 'gazigpt' kullanılır.
+GAZIGPT_API_KEY = os.environ.get("GAZIGPT_API_KEY", "gazigpt")
+
+# Model haritası: API model adı → (backend_model, system_prompt_ekleri)
+API_MODELS = {
+    "gazigpt": {
+        "backend": "openai",
+        "description": "GaziGPT Standart — Dengeli hız ve kalite",
+        "system_ext": "",
+    },
+    "gazigpt-fast": {
+        "backend": "openai-fast",
+        "description": "GaziGPT Fast — En hızlı yanıt",
+        "system_ext": "",
+    },
+    "gazigpt-thinking": {
+        "backend": "openai-fast",
+        "description": "GaziGPT Thinking — Derin düşünme + analiz",
+        "system_ext": (
+            "Senin çok güçlü bir analitik 'İç Ses' (Düşünce) yeteneğin var. "
+            "Kullanıcıya asıl cevabı vermeden önce her zaman içinden detaylıca düşün, durumu analiz et ve plan yap. "
+            "Düşünce sürecin API tarafından otomatik ayrıştırılmaktadır, bu yüzden yanıtında kendin asla <think> veya </think> gibi etiketler KULLANMA. "
+            "Sadece içinden özgürce düşün, ardından kullanıcıya doğrudan ve doğal bir şekilde asıl cevabını ver."
+        ),
+    },
+    "gazigpt-extended": {
+        "backend": "extended",
+        "description": "GaziGPT Extended — 8 aşamalı akıllı pipeline",
+        "system_ext": (
+            "Senin adın GaziGPT Extended. Sen en gelişmiş, en akıllı yapay zeka modelisin. "
+            "Cevaplarını verirken:\n"
+            "1. Soruyu birden fazla perspektiften analiz et\n"
+            "2. Mantık zincirini adım adım kur\n"
+            "3. Olası hataları kontrol et\n"
+            "4. En doğru ve kapsamlı cevabı oluştur\n"
+            "5. Türkçe, akıcı ve profesyonel yanıt ver\n"
+            "Düşünce sürecin API tarafından yönetilmektedir, yanıtında kendin <think> veya </think> etiketleri KULLANMA."
+        ),
+    },
+}
+
+
+def _check_api_key():
+    """Authorization header'dan Bearer token kontrolü."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token = auth[7:].strip()
+    return token == GAZIGPT_API_KEY
+
+
+@app.route("/v1/models", methods=["GET"])
+def api_v1_models():
+    """OpenAI uyumlu /v1/models — Kullanılabilir modelleri listeler."""
+    if not _check_api_key():
+        return jsonify({"error": {"message": "Invalid API key", "type": "invalid_request_error", "code": "invalid_api_key"}}), 401
+
+    model_list = []
+    for model_id, info in API_MODELS.items():
+        model_list.append({
+            "id": model_id,
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "gazigpt",
+            "description": info["description"],
+        })
+    return jsonify({"object": "list", "data": model_list})
+
+
+@app.route("/v1/chat/completions", methods=["POST"])
+def api_v1_chat_completions():
+    """OpenAI uyumlu /v1/chat/completions endpoint'i.
+    
+    Desteklenen modeller: gazigpt, gazigpt-fast, gazigpt-thinking, gazigpt-extended
+    API Key: Bearer gazigpt
+    Streaming: stream=true/false
+    """
+    # ── API Key kontrolü ──
+    if not _check_api_key():
+        return jsonify({"error": {"message": "Invalid API key. Use 'Authorization: Bearer gazigpt'", "type": "invalid_request_error", "code": "invalid_api_key"}}), 401
+
+    data = request.json or {}
+    model_id = data.get("model", "gazigpt").lower().strip()
+    messages = data.get("messages", [])
+    stream = data.get("stream", False)
+    long_term_memory = data.get("long_term_memory", [])
+    temperature = data.get("temperature", None)
+    max_tokens = data.get("max_tokens", None)
+
+    # ── Model doğrulama ──
+    if model_id not in API_MODELS:
+        return jsonify({"error": {"message": f"Model '{model_id}' not found. Available: {', '.join(API_MODELS.keys())}", "type": "invalid_request_error", "code": "model_not_found"}}), 404
+
+    if not messages:
+        return jsonify({"error": {"message": "messages is required", "type": "invalid_request_error"}}), 400
+
+    model_config = API_MODELS[model_id]
+    backend_model = model_config["backend"]
+    system_ext = model_config["system_ext"]
+
+    # System prompt'u oluştur
+    prompt = agent.build_system_prompt(system_ext)
+
+    request_id = f"chatcmpl-{int(time.time()*1000)}"
+
+    # ── STREAMING MODU ──
+    if stream:
+        def stream_openai():
+            import json as _json
+
+            if backend_model == "extended":
+                # Extended pipeline
+                for event_type, event_data in agent.extended_pipeline_stream(messages, system_prompt=prompt, memory_list=long_term_memory):
+                    if event_type == "chunk":
+                        chunk_obj = {
+                            "id": request_id,
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": model_id,
+                            "choices": [{"index": 0, "delta": {"content": event_data}, "finish_reason": None}],
+                        }
+                        yield f"data: {_json.dumps(chunk_obj, ensure_ascii=False)}\n\n"
+                    elif event_type == "done":
+                        done_obj = {
+                            "id": request_id,
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": model_id,
+                            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                        }
+                        yield f"data: {_json.dumps(done_obj, ensure_ascii=False)}\n\n"
+                        yield "data: [DONE]\n\n"
+                    elif event_type == "fallback":
+                        for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override="openai"):
+                            chunk_obj = {
+                                "id": request_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": model_id,
+                                "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
+                            }
+                            yield f"data: {_json.dumps(chunk_obj, ensure_ascii=False)}\n\n"
+                        done_obj = {
+                            "id": request_id,
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": model_id,
+                            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                        }
+                        yield f"data: {_json.dumps(done_obj, ensure_ascii=False)}\n\n"
+                        yield "data: [DONE]\n\n"
+            else:
+                # Normal model stream
+                for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
+                    chunk_obj = {
+                        "id": request_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": model_id,
+                        "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
+                    }
+                    yield f"data: {_json.dumps(chunk_obj, ensure_ascii=False)}\n\n"
+
+                done_obj = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_id,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }
+                yield f"data: {_json.dumps(done_obj, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return Response(
+            stream_with_context(stream_openai()),
+            content_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # ── NON-STREAMING MODU ──
+    else:
+        full_text = ""
+
+        if backend_model == "extended":
+            for event_type, event_data in agent.extended_pipeline_stream(messages, system_prompt=prompt, memory_list=long_term_memory):
+                if event_type == "chunk":
+                    full_text += event_data
+                elif event_type == "fallback":
+                    for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override="openai"):
+                        full_text += chunk
+        else:
+            for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
+                full_text += chunk
+
+        return jsonify({
+            "id": request_id,
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model_id,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": full_text},
+                "finish_reason": "stop",
+            }],
+            "usage": {
+                "prompt_tokens": sum(len(m.get("content", "").split()) for m in messages),
+                "completion_tokens": len(full_text.split()),
+                "total_tokens": sum(len(m.get("content", "").split()) for m in messages) + len(full_text.split()),
+            },
+        })
+
+
 @app.route("/api/config", methods=["GET"])
 def api_config():
     """Logo ve konfigürasyon bilgilerini döndür."""
@@ -569,7 +868,7 @@ def open_browser():
 if __name__ == "__main__":
     print("=" * 50)
     print("  GaziGPT - v2.0")
-    print("  URL: http://localhost:5000")
+    print("  URL: https://gazigpt.onrender.com")
     print(f"  Aktif Araclar: {len(agent.tool_manager.tools)}")
     print("  Ctrl+C ile kapatin")
     print("=" * 50)
