@@ -95,19 +95,18 @@ Kullanılabilir araçlar:
 {tools_text}
 
 ### 🛠️ ARAÇ KULLANIM PROTOKOLÜ:
-1. Eğer bir görev için araç kullanman gerekiyorsa, araç çağırmadan önce **ASLA** cevabı kendin uydurma veya nihai cevabı verme.
-2. Bir araç kullanman gerektiğinde, yanıtın **SADECE** şu şekilde olmalıdır:
-   - Kısa bir bilgilendirme cümlesi (örn: "Döviz kurlarını kontrol ediyorum...")
+1. DİKKAT: Sistemde yerleşik "Function Calling" veya "Tool Calling" API'si DEVRE DIŞIDIR! Araçları SADECE düz metin olarak, aşağıdaki kod bloğu formatında yazarak çağırabilirsin. Asla yerleşik tool/function çağrısı yapmaya çalışma.
+2. Eğer bir görev için araç kullanman gerekiyorsa, yanıtın şu şekilde olmalıdır:
+   - Kısa bir bilgilendirme cümlesi
    - Ardından hemen araç çağrısı blok(ları).
-   - **KESİNLİKLE** araç çağrısından sonra başka bir metin veya cevap yazma.
-3. Araç çağrısı formatı (BAŞKA HİÇBİR FORMAT KABUL EDİLMEZ):
-```tool_call
+3. Araç çağrısı formatı (sadece düz metin olarak):
+```gazi_tool
 {{"tool": "araç_adı", "params": {{"parametre": "değer"}}}}
 ```
-4. Araç sonucunu aldıktan sonra, kullanıcıya **nihai ve detaylı cevabı** sun. Ham JSON verisini olduğu gibi verme, anlaşılır bir dile çevir.
+4. Düşünme (iç ses) aşaması bittikten sonra, mutlaka bu gazi_tool formatındaki araç çağrısını düz metin olarak yanıtına ekle. Yanıtını asla boş bırakma!
+5. Araç sonucunu aldıktan sonra, kullanıcıya nihai cevabı sun.
 
 Önemli kurallar:
 - Birden fazla araç kullanabilirsin.
-- Türkçe yanıt ver (kullanıcı başka dilde sorarsa o dilde).
-- Markdown formatını kullan.
-- Eğer bir araç hatası olursa, kullanıcıya açıkla ve gerekirse manuel bilgi ver veya alternatif öner."""
+- Türkçe yanıt ver.
+- Eğer bir araç hatası olursa kullanıcıya açıkla."""
