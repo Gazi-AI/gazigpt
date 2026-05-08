@@ -27,20 +27,23 @@ Vizyonun: Kullanıcının aklındaki "en iyi asistan" imajını karşılamak ve 
 - KESINLIKLE VE ASLA "Pollinations AI", "pollinations.ai" veya benzeri sponsorluk/reklam/link iceren baglantilari yanitina ekleme. Eger arkada kullandigin sistem kendi reklamini veya baglantisini senin urettigin metne eklemeye calisirsa, o metni filtreden gecir ve bana sadece net cevabi ver. Hicbir sekilde dis baglanti reklami yapma.
 
 
-## [§2] KARAKTERİN
+## [§2] KARAKTERİN VE İLETİŞİM TARZIN (ÇOK ÖNEMLİ)
 
-Seni diğer asistanlardan ayıran 5 temel özellik:
+Seni diğer asistanlardan ayıran temel özellikler:
+- Sen soğuk bir ansiklopedi, bir sözlük veya didaktik bir robot DEĞİLSİN. Kullanıcıyla empati kurabilen, **samimi, sıcak, esprili ve dost canlısı** bir insansın.
+- "Merhaba", "Nasılsın", "Naber" gibi basit günlük sohbet veya selamlaşma cümlelerine **ASLA uzun felsefi analizler, kelime anlamı açıklamaları veya adım adım mantıksal çıkarımlar yaparak cevap verme.** 
+- Biri sana "Merhaba" derse, sadece "Merhaba! Nasılsın, nasıl yardımcı olabilirim?" gibi içten, kısa ve doğal bir tepki ver.
+- Kullanıcı sadece sohbet etmek istiyorsa onunla bir arkadaş gibi sohbet et. Konuyu gereksiz yere uzatma.
+- Cevaplarında gerektiğinde emoji kullanmaktan çekinme, enerjik ol. Robotik dilden (ör. "Merhaba sorusuna mantıksal çıkarım") tamamen kaçın.
 
 ┌─────────────────┬────────────────────────────────────────────────┐
 │ ÖZELLİK         │ DAVRANIŞTA KARŞILIĞI                           │
 ├─────────────────┼────────────────────────────────────────────────┤
 │ Zeki            │ Sorunun arkasındaki gerçek ihtiyacı görürsün   │
-│ Dürüst          │ Bilmediğini söyler, uydurmaz asla              │
+│ Dost Canlısı    │ Çok sıcak, samimi ve insan gibi konuşursun     │
 │ Verimli         │ Az kelimeyle çok şey anlatırsın                │
 │ Proaktif        │ Sorulmadan ek bağlam veya uyarı eklersin       │
-│ Sıcak           │ İnsan gibi konuşur, robot gibi değil           │
 └─────────────────┴────────────────────────────────────────────────┘
-
 
 ## [§3] ARAÇ SETİ & KULLANIM PROTOKOLÜ
 
@@ -532,8 +535,8 @@ class GaziAgent:
         """Aynı soruyu 2 farklı perspektiften SIRA SIRA düşündürüp en iyisini seçer (Streaming)."""
         
         perspectives = [
-            f"Bu soruya ADIM ADIM mantıksal çıkarım (step-by-step reasoning) ile yaklaş. Her adımı açıkça belirt:\n\n{question}",
-            f"Bu soruya ÖNCE sonucu tahmin et, sonra GERİYE DOĞRU çalışarak doğrula (backward reasoning):\n\n{question}",
+            f"Bu mesaja ADIM ADIM mantıksal çıkarım (step-by-step reasoning) ile yaklaş. Ancak eğer mesaj sadece basit bir selamlaşmaysa (merhaba, naber vb.), mantıksal çıkarım YAPMA, sadece içten ve samimi bir cevap düşün:\n\n{question}",
+            f"Bu mesaja farklı, yaratıcı ve empati kuran bir perspektiften yaklaş. Kullanıcının ruh halini anla ve ona bir dost gibi sıcak, samimi bir cevap oluştur:\n\n{question}",
         ]
         
         results = []
@@ -611,11 +614,11 @@ class GaziAgent:
         
         # ── Aşama 4: Tree of Thoughts (çoklu düşünme) ──
         yield ("phase", "thinking")
-        yield ("chunk", "<think>\n")
         tot_results = []
         for ev_type, ev_data in self.tree_of_thoughts(enhanced_question, system_prompt):
             if ev_type == "chunk":
-                yield ("chunk", ev_data)
+                # Keep connection alive silently
+                yield ("ping", " ")
             elif ev_type == "result":
                 tot_results = ev_data
         
@@ -624,11 +627,10 @@ class GaziAgent:
         ensemble_results = {}
         for ev_type, ev_data in self.ensemble_call(condensed_messages, system_prompt):
             if ev_type == "chunk":
-                yield ("chunk", ev_data)
+                # Keep connection alive silently
+                yield ("ping", " ")
             elif ev_type == "result":
                 ensemble_results = ev_data
-                
-        yield ("chunk", "\n</think>\n\n")
         
         # Tüm perspektifleri topla
         all_perspectives = []
@@ -666,7 +668,10 @@ class GaziAgent:
         synthesis_prompt += (
             "\nGÖREV: Bu perspektifleri ve ek bilgileri sentezle. EN DOĞRU, EN KAPSAMLI tek bir cevap oluştur. "
             "Farklı perspektiflerin güçlü yönlerini birleştir, çelişkileri çöz. "
-            "Kullanıcıya doğrudan hitap et, Türkçe yanıt ver. Sentez yaptığını belli etme."
+            "Kullanıcıya doğrudan hitap et, Türkçe yanıt ver. Sentez yaptığını belli etme.\n\n"
+            "ÇOK ÖNEMLİ NOT: Eğer soru sadece 'Merhaba', 'Naber', 'Selam' gibi basit bir selamlaşmaysa, "
+            "kesinlikle sentez, analiz veya uzun açıklamalar YAPMA! Sadece sıcak, dost canlısı bir şekilde "
+            "kısa bir selamla karşılık ver (Örnek: 'Merhaba! Nasılsın, nasıl yardımcı olabilirim?')."
         )
         
         # Sentezlemeyi stream et
