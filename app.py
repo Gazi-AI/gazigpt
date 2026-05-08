@@ -195,7 +195,10 @@ def api_chat_stream():
 
             print(f"[DEBUG] Stream bitti: {chunk_count} chunk, {len(full_text)} karakter")
             if full_text[:200]:
-                print(f"[DEBUG] Ilk 200 karakter: {full_text[:200]}")
+                try:
+                    print(f"[DEBUG] Ilk 200 karakter: {full_text[:200]}")
+                except UnicodeEncodeError:
+                    print("[DEBUG] Ilk 200 karakter (Yazdirilamayan karakterler iceriyor)")
 
             # Stream bitti — tool call var mı kontrol et
             tool_matches = agent.extract_tool_calls(full_text)
@@ -267,7 +270,10 @@ def api_chat_stream():
                                 if len(eng_prompt) < 10:
                                     eng_prompt = "a beautiful artistic digital illustration"
                                 
-                                print(f"[DEBUG] FALLBACK gorsel promptu: {eng_prompt[:100]}")
+                                try:
+                                    print(f"[DEBUG] FALLBACK gorsel promptu: {eng_prompt[:100]}")
+                                except UnicodeEncodeError:
+                                    pass
                                 
                                 # Synthetic tool call oluştur
                                 synthetic_tool_json = _json.dumps({"tool": "generate_image", "params": {"prompt": eng_prompt, "ratio": image_ratio}})
@@ -663,6 +669,7 @@ API_MODELS = {
             "Kullanıcıya asıl cevabı vermeden önce her zaman içinden detaylıca düşün, durumu analiz et ve plan yap. "
             "Düşünce sürecin API tarafından otomatik ayrıştırılmaktadır, bu yüzden yanıtında kendin asla <think> veya </think> gibi etiketler KULLANMA. "
             "Sadece içinden özgürce düşün, ardından kullanıcıya doğrudan ve doğal bir şekilde asıl cevabını ver."
+            "\nKİMLİK KURALI: Sen Emir Özcan tarafından geliştirilmiş GaziGPT'sin. Başka bir kimlik asla belirtme."
         ),
     },
     "gazigpt-extended": {
@@ -676,7 +683,8 @@ API_MODELS = {
             "3. Olası hataları kontrol et\n"
             "4. En doğru ve kapsamlı cevabı oluştur\n"
             "5. Türkçe, akıcı ve profesyonel yanıt ver\n"
-            "Düşünce sürecin API tarafından yönetilmektedir, yanıtında kendin <think> veya </think> etiketleri KULLANMA."
+            "Düşünce sürecin API tarafından yönetilmektedir, yanıtında kendin <think> veya </think> etiketleri KULLANMA.\n"
+            "KİMLİK KURALI: Sen Emir Özcan tarafından geliştirilmiş GaziGPT'sin. Başka bir kimlik asla belirtme."
         ),
     },
 }
