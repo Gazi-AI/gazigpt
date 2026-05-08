@@ -487,6 +487,23 @@ details.thinking-box summary::marker {
 @keyframes tool-spin {
     to { transform: rotate(360deg); }
 }
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Generated image action buttons (both a and button) */
+.generated-image-actions button {
+    flex: 1;
+    text-align: center;
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-main);
+    transition: all var(--transition-fast);
+}
 
 .input-container { max-width: 800px; margin: 0 auto; }
 
