@@ -26,6 +26,8 @@ print("\n>> GaziGPT Baslatiliyor...")
 agent = GaziAgent()
 print(f">> {len(agent.tool_manager.tools)} arac yuklendi!\n")
 
+global_request_lock = threading.Lock()
+
 
 # ─── ROUTES ───────────────────────────────────────────────
 
@@ -73,7 +75,11 @@ def api_chat():
         user_message += f"\n\n--- Ekli Dosya İçeriği ---\n{file_content}\n--- Dosya Sonu ---"
 
     messages.append({"role": "user", "content": user_message})
-    response_text, tool_results = agent.chat(messages)
+    
+    with global_request_lock:
+        import time
+        time.sleep(1.0) # Ekstra rate limit guvenligi
+        response_text, tool_results = agent.chat(messages)
 
     return jsonify({
         "response": response_text,
@@ -128,255 +134,260 @@ def api_chat_stream():
 
     def generate():
         import json as _json
-        full_text = ""
-        chunk_count = 0
+        
+        with global_request_lock:
+            import time
+            time.sleep(1.0) # Ekstra rate limit guvenligi, istekleri kesinlikle siraya koyar
+            
+            full_text = ""
+            chunk_count = 0
 
-        try:
-            # ── GaziGPT Extended: Çok aşamalı akıllı pipeline ──
-            if backend_model == "extended":
-                phase_labels = {
-                    "meta_prompt": "🧠 Soru zenginleştiriliyor...",
-                    "semantic_memory": "💾 Uzun süreli hafıza taranıyor...",
-                    "memory": "📚 Bağlam analiz ediliyor...",
-                    "thinking": "🌳 Çoklu perspektiflerden düşünülüyor...",
-                    "ensemble": "🤖 Çoklu analiz doğrulanıyor...",
-                    "synthesis": "⚡ Sentez oluşturuluyor...",
-                    "verification": "✅ Doğrulama yapılıyor...",
-                }
-                
-                verification_text = ""  # Son cevap, doğrulama için
-                used_fallback = False
-                
-                for event_type, event_data in agent.extended_pipeline_stream(messages, system_prompt=prompt, memory_list=long_term_memory):
-                    if event_type == "phase":
-                        label = phase_labels.get(event_data, f"⏳ {event_data}...")
-                        yield f"data: {_json.dumps({'type': 'extended_phase', 'phase': event_data, 'label': label}, ensure_ascii=False)}\n\n"
+            try:
+                # ── GaziGPT Extended: Çok aşamalı akıllı pipeline ──
+                if backend_model == "extended":
+                    phase_labels = {
+                        "meta_prompt": "🧠 Soru zenginleştiriliyor...",
+                        "semantic_memory": "💾 Uzun süreli hafıza taranıyor...",
+                        "memory": "📚 Bağlam analiz ediliyor...",
+                        "thinking": "🌳 Çoklu perspektiflerden düşünülüyor...",
+                        "ensemble": "🤖 Çoklu analiz doğrulanıyor...",
+                        "synthesis": "⚡ Sentez oluşturuluyor...",
+                        "verification": "✅ Doğrulama yapılıyor...",
+                    }
                     
-                    elif event_type == "ping":
-                        # Send a valid data event to ensure the SSE buffer flushes and connection stays alive
-                        yield f"data: {_json.dumps({'type': 'ping'})}\n\n"
+                    verification_text = ""  # Son cevap, doğrulama için
+                    used_fallback = False
                     
-                    elif event_type == "chunk":
-                        if "pollinations" in event_data.lower():
-                            continue
-                        full_text += event_data
-                        verification_text += event_data
-                        chunk_count += 1
-                        yield f"data: {_json.dumps({'type': 'chunk', 'content': event_data}, ensure_ascii=False)}\n\n"
-                    
-                    elif event_type == "fallback":
-                        used_fallback = True
-                        # Pipeline başarısız — normal stream'e geç
-                        for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override="openai"):
-                            if "pollinations" in chunk.lower():
-                                continue
-                            full_text += chunk
-                            chunk_count += 1
-                            yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-                    
-                    elif event_type == "done":
-                        # Chain of Verification (Aşama 5)
-                        # Optimizasyon: Sentezleme aşaması zaten çok güçlü olduğu için, 10 saniyelik gecikmeyi 
-                        # önlemek adına son doğrulama çağrısı kaldırıldı.
-                        pass
-                
-                # Extended pipeline bitti — tool check yap
-                # (aşağıdaki normal tool check akışına düşecek)
-                
-            else:
-                # ── Normal model akışı (GaziGPT ve Thinking) ──
-                for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
-                    if "pollinations" in chunk.lower():
-                        continue
-                    full_text += chunk
-                    chunk_count += 1
-                    yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-
-            print(f"[DEBUG] Stream bitti: {chunk_count} chunk, {len(full_text)} karakter")
-            if full_text[:200]:
-                try:
-                    print(f"[DEBUG] Ilk 200 karakter: {full_text[:200]}")
-                except UnicodeEncodeError:
-                    print("[DEBUG] Ilk 200 karakter (Yazdirilamayan karakterler iceriyor)")
-
-            # Stream bitti — tool call var mı kontrol et
-            tool_matches = agent.extract_tool_calls(full_text)
-            print(f"[DEBUG] Tool matches: {len(tool_matches)}")
-
-            # ── FALLBACK: Thinking model düşüncede tool planladı ama content boş kaldıysa ──
-            if not tool_matches:
-                import re as _re
-                # Düşünme içeriğini ve asıl content'i ayır
-                think_match = _re.search(r'<think>([\s\S]*?)</think>', full_text, _re.IGNORECASE)
-                content_only = _re.sub(r'<think>[\s\S]*?</think>', '', full_text, flags=_re.IGNORECASE).strip()
-                
-                if think_match and len(content_only) < 20:
-                    think_text = think_match.group(1).lower()
-                    registered_tools = list(agent.tool_manager.tools.keys())
-                    
-                    for tool_name in registered_tools:
-                        if tool_name in think_text:
-                            print(f"[DEBUG] FALLBACK: Thinking model '{tool_name}' aracini planlamis ama content bos. Otomatik calistiriliyor...")
-                            
-                            # generate_image için özel işlem
-                            if tool_name == "generate_image":
-                                # Kullanıcının mesajından İngilizce prompt üret
-                                eng_prompt = ""
-                                
-                                # Öncelik 1: Modelin düşünce sürecinden İngilizce anahtar kelimeleri çıkar
-                                try:
-                                    import re as _re2
-                                    think_content = _re.search(r'<think>([\s\S]*?)</think>', full_text, _re.IGNORECASE)
-                                    if think_content:
-                                        t = think_content.group(1)
-                                        # Düşüncede "want a X image/picture" veya "X image" kalıbını ara
-                                        patterns = [
-                                            r'(?:description|prompt)[:\s]+["\']([^"\']{5,})["\']',
-                                            r'(?:want|need|generate|produce|create)\s+(?:a|an)\s+(.+?)(?:\.|,|image|picture|photo)',
-                                            r'(?:they want|user wants?)\s+(?:a|an)\s+(.+?)(?:\.|,|image|picture)',
-                                        ]
-                                        for pattern in patterns:
-                                            match = _re2.search(pattern, t, _re2.IGNORECASE)
-                                            if match:
-                                                candidate = match.group(1).strip().strip('"').strip("'")
-                                                if len(candidate) >= 3 and not any(c in candidate for c in "çşğüöıÇŞĞÜÖİ"):
-                                                    # "cat" → "a cute cat, digital art, high quality"
-                                                    eng_prompt = f"{candidate}, digital art, highly detailed, beautiful lighting, 8K"
-                                                    print(f"[DEBUG] Dusunceden prompt: {eng_prompt[:80]}")
-                                                    break
-                                except Exception:
-                                    pass
-                                
-                                # Öncelik 2: Kullanıcının Türkçe mesajından anahtar kelimeyi çıkar ve basit çeviri yap
-                                if not eng_prompt or len(eng_prompt) < 10:
-                                    # Türkçe çizim/üretim fiillerini kaldır, kalan kısım konuyu verir
-                                    clean_msg = user_message.lower()
-                                    for remove_word in ["bana", "bir", "resim", "resmi", "çiz", "çizer", "misin", "lütfen",
-                                                        "görsel", "oluştur", "üret", "yap", "fotoğraf", "tablo", "en", 
-                                                        "olsun", "şirin", "tatlı", "güzel", "harika", "muhteşem"]:
-                                        clean_msg = clean_msg.replace(remove_word, "")
-                                    clean_msg = " ".join(clean_msg.split()).strip()
-                                    
-                                    if clean_msg and len(clean_msg) >= 2:
-                                        eng_prompt = f"{clean_msg}, digital art, highly detailed, beautiful composition, 8K quality"
-                                    else:
-                                        eng_prompt = "a beautiful artistic digital illustration, vibrant colors, 8K"
-                                
-                                # Pollinations reklamlarını temizle
-                                for bad in ["pollinations", "http://", "https://", "Pollinations"]:
-                                    eng_prompt = eng_prompt.replace(bad, "")
-                                eng_prompt = eng_prompt.strip().strip('"').strip("'")
-                                if len(eng_prompt) < 10:
-                                    eng_prompt = "a beautiful artistic digital illustration"
-                                
-                                try:
-                                    print(f"[DEBUG] FALLBACK gorsel promptu: {eng_prompt[:100]}")
-                                except UnicodeEncodeError:
-                                    pass
-                                
-                                # Synthetic tool call oluştur
-                                synthetic_tool_json = _json.dumps({"tool": "generate_image", "params": {"prompt": eng_prompt, "ratio": image_ratio}})
-                                tool_matches = [synthetic_tool_json]
-                            else:
-                                # Diğer tool'lar için basit fallback
-                                synthetic_tool_json = _json.dumps({"tool": tool_name, "params": {}})
-                                tool_matches = [synthetic_tool_json]
-                            break
-
-            if tool_matches:
-                # Tool isimlerini bulalım
-                tool_names_start = []
-                for m in tool_matches:
-                    try:
-                        parsed = _json.loads(m)
-                        if isinstance(parsed, dict) and "tool" in parsed:
-                            tool_names_start.append(parsed["tool"])
-                        elif isinstance(parsed, list):
-                            for d in parsed:
-                                if isinstance(d, dict) and "tool" in d:
-                                    tool_names_start.append(d["tool"])
-                    except:
-                        pass
-
-                # Frontend'e tool başladığını bildir
-                yield f"data: {_json.dumps({'type': 'tool_start', 'count': len(tool_names_start) or 1, 'tools': tool_names_start}, ensure_ascii=False)}\n\n"
-
-                # Tool'ları çalıştır (image_ratio'yu inject et)
-                agent._current_image_ratio = image_ratio
-
-                # Eğer synthetic tool call ise, doğrudan çalıştır
-                tool_results = []
-                for m in tool_matches:
-                    try:
-                        parsed = _json.loads(m)
-                        if isinstance(parsed, dict) and "tool" in parsed:
-                            result = agent.tool_manager.execute_tool(parsed["tool"], parsed.get("params", {}))
-                            tool_results.append({"tool": parsed["tool"], "params": parsed.get("params", {}), "result": result})
-                    except:
-                        pass
-                
-                # Normal tool extraction fallback
-                if not tool_results:
-                    processed, tool_results = agent.execute_tool_calls(full_text)
-
-                # Tool sonuçlarını frontend'e gönder (image URL dahil)
-                tool_names = [tr['tool'] for tr in tool_results]
-                tool_data = []
-                for tr in tool_results:
-                    td = {"tool": tr["tool"]}
-                    res = tr.get("result", {})
-                    inner = res.get("result", res)
-                    if isinstance(inner, dict) and "image_url" in inner:
-                        td["image_url"] = inner["image_url"]
-                    tool_data.append(td)
-
-                yield f"data: {_json.dumps({'type': 'tool_done', 'tools': tool_names, 'results': tool_data}, ensure_ascii=False)}\n\n"
-
-                # Tool sonuçlarını kullanıcıya sun
-                # İkinci LLM çağrısı yerine doğrudan cevap oluştur (thinking model boş content sorunu)
-                has_image = any("generate_image" in tr.get("tool", "") for tr in tool_results)
-                
-                if has_image:
-                    # Görsel üretildiyse, basit bir onay mesajı gönder
-                    img_result = next((tr for tr in tool_results if tr["tool"] == "generate_image"), None)
-                    if img_result:
-                        img_prompt = img_result.get("params", {}).get("prompt", "")
-                        confirm_msg = f"Görseliniz başarıyla oluşturuldu! 🎨"
-                        if img_prompt:
-                            confirm_msg += f"\n\n**Kullanılan prompt:** {img_prompt}"
+                    for event_type, event_data in agent.extended_pipeline_stream(messages, system_prompt=prompt, memory_list=long_term_memory):
+                        if event_type == "phase":
+                            label = phase_labels.get(event_data, f"⏳ {event_data}...")
+                            yield f"data: {_json.dumps({'type': 'extended_phase', 'phase': event_data, 'label': label}, ensure_ascii=False)}\n\n"
                         
-                        # Chunk chunk gönder (frontend'in alışık olduğu format)
-                        for word in confirm_msg.split(" "):
-                            yield f"data: {_json.dumps({'type': 'chunk', 'content': word + ' '}, ensure_ascii=False)}\n\n"
+                        elif event_type == "ping":
+                            # Send a valid data event to ensure the SSE buffer flushes and connection stays alive
+                            yield f"data: {_json.dumps({'type': 'ping'})}\n\n"
+                        
+                        elif event_type == "chunk":
+                            if "pollinations" in event_data.lower():
+                                continue
+                            full_text += event_data
+                            verification_text += event_data
+                            chunk_count += 1
+                            yield f"data: {_json.dumps({'type': 'chunk', 'content': event_data}, ensure_ascii=False)}\n\n"
+                        
+                        elif event_type == "fallback":
+                            used_fallback = True
+                            # Pipeline başarısız — normal stream'e geç
+                            for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override="openai"):
+                                if "pollinations" in chunk.lower():
+                                    continue
+                                full_text += chunk
+                                chunk_count += 1
+                                yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+                        
+                        elif event_type == "done":
+                            # Chain of Verification (Aşama 5)
+                            # Optimizasyon: Sentezleme aşaması zaten çok güçlü olduğu için, 10 saniyelik gecikmeyi 
+                            # önlemek adına son doğrulama çağrısı kaldırıldı.
+                            pass
+                    
+                    # Extended pipeline bitti — tool check yap
+                    # (aşağıdaki normal tool check akışına düşecek)
+                    
                 else:
-                    # Diğer tool'lar için basit bir 'openai' (non-thinking) model ile özet yap
-                    msgs2 = messages.copy()
-                    
-                    import re
-                    processed_text = "Araç çalıştırıldı."
-                    for tr in tool_results:
-                        result_json = _json.dumps(tr["result"].get("result", tr["result"]), ensure_ascii=False)
-                        processed_text += f"\n\n**{tr['tool']} aracı kullanıldı:**\n```json\n{result_json}\n```"
-                    
-                    msgs2.append({"role": "assistant", "content": processed_text})
-                    msgs2.append({
-                        "role": "user",
-                        "content": (
-                            "[Sistem: Tool sonuclari alindi. Kullaniciya kisa ve net sekilde sun. "
-                            "Tekrar tool cagirma. Markdown gorsel formatini kullanma.]"
-                        )
-                    })
-
-                    # Non-thinking model kullan (openai, openai-fast değil)
-                    for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt, model_override="openai"):
+                    # ── Normal model akışı (GaziGPT ve Thinking) ──
+                    for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override=backend_model):
                         if "pollinations" in chunk.lower():
                             continue
+                        full_text += chunk
+                        chunk_count += 1
                         yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-
-        except Exception as e:
-            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
-
-        yield f"data: {_json.dumps({'type': 'done'})}\n\n"
+    
+                print(f"[DEBUG] Stream bitti: {chunk_count} chunk, {len(full_text)} karakter")
+                if full_text[:200]:
+                    try:
+                        print(f"[DEBUG] Ilk 200 karakter: {full_text[:200]}")
+                    except UnicodeEncodeError:
+                        print("[DEBUG] Ilk 200 karakter (Yazdirilamayan karakterler iceriyor)")
+    
+                # Stream bitti — tool call var mı kontrol et
+                tool_matches = agent.extract_tool_calls(full_text)
+                print(f"[DEBUG] Tool matches: {len(tool_matches)}")
+    
+                # ── FALLBACK: Thinking model düşüncede tool planladı ama content boş kaldıysa ──
+                if not tool_matches:
+                    import re as _re
+                    # Düşünme içeriğini ve asıl content'i ayır
+                    think_match = _re.search(r'<think>([\s\S]*?)</think>', full_text, _re.IGNORECASE)
+                    content_only = _re.sub(r'<think>[\s\S]*?</think>', '', full_text, flags=_re.IGNORECASE).strip()
+                    
+                    if think_match and len(content_only) < 20:
+                        think_text = think_match.group(1).lower()
+                        registered_tools = list(agent.tool_manager.tools.keys())
+                        
+                        for tool_name in registered_tools:
+                            if tool_name in think_text:
+                                print(f"[DEBUG] FALLBACK: Thinking model '{tool_name}' aracini planlamis ama content bos. Otomatik calistiriliyor...")
+                                
+                                # generate_image için özel işlem
+                                if tool_name == "generate_image":
+                                    # Kullanıcının mesajından İngilizce prompt üret
+                                    eng_prompt = ""
+                                    
+                                    # Öncelik 1: Modelin düşünce sürecinden İngilizce anahtar kelimeleri çıkar
+                                    try:
+                                        import re as _re2
+                                        think_content = _re.search(r'<think>([\s\S]*?)</think>', full_text, _re.IGNORECASE)
+                                        if think_content:
+                                            t = think_content.group(1)
+                                            # Düşüncede "want a X image/picture" veya "X image" kalıbını ara
+                                            patterns = [
+                                                r'(?:description|prompt)[:\s]+["\']([^"\']{5,})["\']',
+                                                r'(?:want|need|generate|produce|create)\s+(?:a|an)\s+(.+?)(?:\.|,|image|picture|photo)',
+                                                r'(?:they want|user wants?)\s+(?:a|an)\s+(.+?)(?:\.|,|image|picture)',
+                                            ]
+                                            for pattern in patterns:
+                                                match = _re2.search(pattern, t, _re2.IGNORECASE)
+                                                if match:
+                                                    candidate = match.group(1).strip().strip('"').strip("'")
+                                                    if len(candidate) >= 3 and not any(c in candidate for c in "çşğüöıÇŞĞÜÖİ"):
+                                                        # "cat" → "a cute cat, digital art, high quality"
+                                                        eng_prompt = f"{candidate}, digital art, highly detailed, beautiful lighting, 8K"
+                                                        print(f"[DEBUG] Dusunceden prompt: {eng_prompt[:80]}")
+                                                        break
+                                    except Exception:
+                                        pass
+                                    
+                                    # Öncelik 2: Kullanıcının Türkçe mesajından anahtar kelimeyi çıkar ve basit çeviri yap
+                                    if not eng_prompt or len(eng_prompt) < 10:
+                                        # Türkçe çizim/üretim fiillerini kaldır, kalan kısım konuyu verir
+                                        clean_msg = user_message.lower()
+                                        for remove_word in ["bana", "bir", "resim", "resmi", "çiz", "çizer", "misin", "lütfen",
+                                                            "görsel", "oluştur", "üret", "yap", "fotoğraf", "tablo", "en", 
+                                                            "olsun", "şirin", "tatlı", "güzel", "harika", "muhteşem"]:
+                                            clean_msg = clean_msg.replace(remove_word, "")
+                                        clean_msg = " ".join(clean_msg.split()).strip()
+                                        
+                                        if clean_msg and len(clean_msg) >= 2:
+                                            eng_prompt = f"{clean_msg}, digital art, highly detailed, beautiful composition, 8K quality"
+                                        else:
+                                            eng_prompt = "a beautiful artistic digital illustration, vibrant colors, 8K"
+                                    
+                                    # Pollinations reklamlarını temizle
+                                    for bad in ["pollinations", "http://", "https://", "Pollinations"]:
+                                        eng_prompt = eng_prompt.replace(bad, "")
+                                    eng_prompt = eng_prompt.strip().strip('"').strip("'")
+                                    if len(eng_prompt) < 10:
+                                        eng_prompt = "a beautiful artistic digital illustration"
+                                    
+                                    try:
+                                        print(f"[DEBUG] FALLBACK gorsel promptu: {eng_prompt[:100]}")
+                                    except UnicodeEncodeError:
+                                        pass
+                                    
+                                    # Synthetic tool call oluştur
+                                    synthetic_tool_json = _json.dumps({"tool": "generate_image", "params": {"prompt": eng_prompt, "ratio": image_ratio}})
+                                    tool_matches = [synthetic_tool_json]
+                                else:
+                                    # Diğer tool'lar için basit fallback
+                                    synthetic_tool_json = _json.dumps({"tool": tool_name, "params": {}})
+                                    tool_matches = [synthetic_tool_json]
+                                break
+    
+                if tool_matches:
+                    # Tool isimlerini bulalım
+                    tool_names_start = []
+                    for m in tool_matches:
+                        try:
+                            parsed = _json.loads(m)
+                            if isinstance(parsed, dict) and "tool" in parsed:
+                                tool_names_start.append(parsed["tool"])
+                            elif isinstance(parsed, list):
+                                for d in parsed:
+                                    if isinstance(d, dict) and "tool" in d:
+                                        tool_names_start.append(d["tool"])
+                        except:
+                            pass
+    
+                    # Frontend'e tool başladığını bildir
+                    yield f"data: {_json.dumps({'type': 'tool_start', 'count': len(tool_names_start) or 1, 'tools': tool_names_start}, ensure_ascii=False)}\n\n"
+    
+                    # Tool'ları çalıştır (image_ratio'yu inject et)
+                    agent._current_image_ratio = image_ratio
+    
+                    # Eğer synthetic tool call ise, doğrudan çalıştır
+                    tool_results = []
+                    for m in tool_matches:
+                        try:
+                            parsed = _json.loads(m)
+                            if isinstance(parsed, dict) and "tool" in parsed:
+                                result = agent.tool_manager.execute_tool(parsed["tool"], parsed.get("params", {}))
+                                tool_results.append({"tool": parsed["tool"], "params": parsed.get("params", {}), "result": result})
+                        except:
+                            pass
+                    
+                    # Normal tool extraction fallback
+                    if not tool_results:
+                        processed, tool_results = agent.execute_tool_calls(full_text)
+    
+                    # Tool sonuçlarını frontend'e gönder (image URL dahil)
+                    tool_names = [tr['tool'] for tr in tool_results]
+                    tool_data = []
+                    for tr in tool_results:
+                        td = {"tool": tr["tool"]}
+                        res = tr.get("result", {})
+                        inner = res.get("result", res)
+                        if isinstance(inner, dict) and "image_url" in inner:
+                            td["image_url"] = inner["image_url"]
+                        tool_data.append(td)
+    
+                    yield f"data: {_json.dumps({'type': 'tool_done', 'tools': tool_names, 'results': tool_data}, ensure_ascii=False)}\n\n"
+    
+                    # Tool sonuçlarını kullanıcıya sun
+                    # İkinci LLM çağrısı yerine doğrudan cevap oluştur (thinking model boş content sorunu)
+                    has_image = any("generate_image" in tr.get("tool", "") for tr in tool_results)
+                    
+                    if has_image:
+                        # Görsel üretildiyse, basit bir onay mesajı gönder
+                        img_result = next((tr for tr in tool_results if tr["tool"] == "generate_image"), None)
+                        if img_result:
+                            img_prompt = img_result.get("params", {}).get("prompt", "")
+                            confirm_msg = f"Görseliniz başarıyla oluşturuldu! 🎨"
+                            if img_prompt:
+                                confirm_msg += f"\n\n**Kullanılan prompt:** {img_prompt}"
+                            
+                            # Chunk chunk gönder (frontend'in alışık olduğu format)
+                            for word in confirm_msg.split(" "):
+                                yield f"data: {_json.dumps({'type': 'chunk', 'content': word + ' '}, ensure_ascii=False)}\n\n"
+                    else:
+                        # Diğer tool'lar için basit bir 'openai' (non-thinking) model ile özet yap
+                        msgs2 = messages.copy()
+                        
+                        import re
+                        processed_text = "Araç çalıştırıldı."
+                        for tr in tool_results:
+                            result_json = _json.dumps(tr["result"].get("result", tr["result"]), ensure_ascii=False)
+                            processed_text += f"\n\n**{tr['tool']} aracı kullanıldı:**\n```json\n{result_json}\n```"
+                        
+                        msgs2.append({"role": "assistant", "content": processed_text})
+                        msgs2.append({
+                            "role": "user",
+                            "content": (
+                                "[Sistem: Tool sonuclari alindi. Kullaniciya kisa ve net sekilde sun. "
+                                "Tekrar tool cagirma. Markdown gorsel formatini kullanma.]"
+                            )
+                        })
+    
+                        # Non-thinking model kullan (openai, openai-fast değil)
+                        for chunk in agent.call_llm_stream(msgs2, system_prompt=prompt, model_override="openai"):
+                            if "pollinations" in chunk.lower():
+                                continue
+                            yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+    
+            except Exception as e:
+                yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+    
+            yield f"data: {_json.dumps({'type': 'done'})}\n\n"
 
     return Response(
         generate(),
