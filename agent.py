@@ -536,7 +536,6 @@ class GaziAgent:
         
         perspectives = [
             f"Bu mesaja ADIM ADIM mantıksal çıkarım (step-by-step reasoning) ile yaklaş. Ancak eğer mesaj sadece basit bir selamlaşmaysa (merhaba, naber vb.), mantıksal çıkarım YAPMA, sadece içten ve samimi bir cevap düşün:\n\n{question}",
-            f"Bu mesaja farklı, yaratıcı ve empati kuran bir perspektiften yaklaş. Kullanıcının ruh halini anla ve ona bir dost gibi sıcak, samimi bir cevap oluştur:\n\n{question}",
         ]
         
         results = []
@@ -558,7 +557,7 @@ class GaziAgent:
         """Aynı modeli farklı sıcaklıklarla SIRA SIRA çağırır (Streaming)."""
         
         results = {}
-        temperatures = [0.6, 0.8]  # Düşük = dengeli/kesin, Yüksek = yaratıcı
+        temperatures = [0.6]  # Hız optimizasyonu için tek sıcaklık
         
         for i, temp in enumerate(temperatures):
             label = f"openai_v{i+1}"
