@@ -153,8 +153,8 @@ def api_chat_stream():
                         yield f"data: {_json.dumps({'type': 'extended_phase', 'phase': event_data, 'label': label}, ensure_ascii=False)}\n\n"
                     
                     elif event_type == "ping":
-                        # Send a tiny empty message to keep connection alive
-                        yield f": ping\n\n"
+                        # Send a valid data event to ensure the SSE buffer flushes and connection stays alive
+                        yield f"data: {_json.dumps({'type': 'ping'})}\n\n"
                     
                     elif event_type == "chunk":
                         if "pollinations" in event_data.lower():
