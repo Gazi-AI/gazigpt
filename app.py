@@ -191,7 +191,17 @@ def api_chat_stream():
                             # önlemek adına son doğrulama çağrısı kaldırıldı.
                             pass
                     
-                    # Extended pipeline bitti — tool check yap
+                    # Extended pipeline bitti — eğer cevap boşsa fallback yap
+                    if not full_text.strip():
+                        print("[DEBUG] Extended pipeline bos cevap uretti, fallback calistiriliyor...")
+                        yield f"data: {_json.dumps({'type': 'extended_phase', 'phase': 'synthesis', 'label': '⚡ Doğrudan yanıt oluşturuluyor...'}, ensure_ascii=False)}\n\n"
+                        for chunk in agent.call_llm_stream(messages, system_prompt=prompt, model_override="openai"):
+                            if "pollinations" in chunk.lower():
+                                continue
+                            full_text += chunk
+                            chunk_count += 1
+                            yield f"data: {_json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+                    
                     # (aşağıdaki normal tool check akışına düşecek)
                     
                 else:
