@@ -756,10 +756,11 @@ class GaziAgent:
 
     def call_llm_stream(self, messages, system_prompt="", model_override=None, temperature=0.7):
         """Pollinations API'den streaming yanit al - chunk chunk yield eder. Uzun yanitlarda otomatik devam eder."""
+        import time
         with self._api_lock:
-            import time
-            time.sleep(0.5)
-            yield from self._call_llm_stream_inner(messages, system_prompt, model_override, temperature)
+            time.sleep(1.0)
+        # Lock serbest — streaming basliyor
+        yield from self._call_llm_stream_inner(messages, system_prompt, model_override, temperature)
 
     def _call_llm_stream_inner(self, messages, system_prompt="", model_override=None, temperature=0.7):
         full_messages = [
@@ -950,10 +951,10 @@ class GaziAgent:
 
     def call_llm_fast_stream(self, prompt_text, system_prompt=""):
         """GET tabanli hizli yanit API'si - streaming modunda."""
+        import time
         with self._api_lock:
-            import time
-            time.sleep(0.5)
-            yield from self._call_llm_fast_stream_inner(prompt_text, system_prompt)
+            time.sleep(1.0)
+        yield from self._call_llm_fast_stream_inner(prompt_text, system_prompt)
 
     def _call_llm_fast_stream_inner(self, prompt_text, system_prompt=""):
         import urllib.parse
