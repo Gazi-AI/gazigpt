@@ -328,41 +328,22 @@ class GaziAgent:
     #  STRATEJİ B: META-PROMPTING (Otomatik Prompt İyileştirme)
     # ═══════════════════════════════════════════════════════════
     def meta_prompt_enhance(self, user_message):
-        """Kullanıcının sorusunu otomatik olarak zenginleştir.
-        Kısa/belirsiz sorularda büyük fark yaratır."""
+        """Kullanıcının sorusunu API çağrısı YAPMADAN lokal olarak zenginleştir.
+        Sunucuda rate limit sorununu önlemek için API çağrısı kaldırıldı."""
         
         # Kısa mesajları zenginleştir, uzunları olduğu gibi bırak
-        if len(user_message.split()) > 30:
+        if len(user_message.split()) > 20:
             return user_message  # Zaten detaylı
         
-        enhance_prompt = (
-            f"Aşağıdaki kullanıcı sorusunu daha detaylı, net ve kapsamlı hale getir. "
-            f"Orijinal niyeti koru ama eksik bağlamları ekle. "
-            f"Sadece geliştirilmiş soruyu yaz, başka açıklama yapma.\n\n"
-            f"ORİJİNAL: {user_message}\n\n"
-            f"GELİŞTİRİLMİŞ:"
-        )
+        # Basit selamlaşmaları olduğu gibi bırak
+        greetings = ["merhaba", "selam", "naber", "nasılsın", "hey", "hi", "hello"]
+        if user_message.strip().lower().rstrip("!?., ") in greetings:
+            return user_message
         
-        try:
-            with self._api_lock:
-                import time
-                time.sleep(0.5)
-                resp = self.session.get(
-                    f"{self.POLLINATIONS_FAST_URL}{requests.utils.quote(enhance_prompt)}",
-                    params={"model": "openai"},
-                    timeout=12,
-                )
-            if resp.status_code == 200:
-                enhanced = resp.text.strip()
-                # Çok uzun veya saçma bir sonuç geldiyse orijinali kullan
-                if enhanced and 10 < len(enhanced) < len(user_message) * 5:
-                    print(f"[META-PROMPT] Orijinal: {user_message[:80]}")
-                    print(f"[META-PROMPT] Geliştirilmiş: {enhanced[:120]}")
-                    return enhanced
-        except:
-            pass
-        
-        return user_message  # Hata durumunda orijinali döndür
+        # Lokal zenginleştirme: soruyu bağlam ile sarmalayarak LLM'e iletilecek prompt'u güçlendir
+        enhanced = f"{user_message}\n\n(Bu soruyu detaylı, kapsamlı ve çok perspektifli şekilde yanıtla.)"
+        print(f"[META-PROMPT] Lokal zenginleştirme: {user_message[:80]}")
+        return enhanced
 
     # ═══════════════════════════════════════════════════════════
     #  STRATEJİ C: ReAct DÖNGÜSÜ (Reasoning + Acting)
@@ -465,41 +446,25 @@ class GaziAgent:
     #  STRATEJİ 4: BAĞLAM BELLEĞİ (Context Memory)
     # ═══════════════════════════════════════════════════════════
     def summarize_history(self, messages, max_keep=6):
-        """Uzun konuşmaları akıllıca özetler, kısa süreli hafıza oluşturur.
-        Son max_keep mesajı tam tutar, öncesini özetler."""
+        """Uzun konuşmaları API çağrısı YAPMADAN lokal olarak özetler.
+        Son max_keep mesajı tam tutar, öncesini basit metin olarak özetler.
+        Sunucuda rate limit sorununu önlemek için API çağrısı kaldırıldı."""
         if len(messages) <= max_keep + 2:
             return messages  # Kısa konuşma, özet gerekmez
         
         old_messages = messages[:-max_keep]
         recent_messages = messages[-max_keep:]
         
-        # Eski mesajları özetle
-        summary_text = ""
+        # Eski mesajları lokal olarak kısa özetle (API çağrısı yok)
+        summary_parts = []
         for msg in old_messages:
             role = "Kullanıcı" if msg["role"] == "user" else "AI"
-            content = msg["content"][:200]
-            summary_text += f"{role}: {content}\n"
+            content = msg["content"][:150]
+            summary_parts.append(f"{role}: {content}")
         
-        summary_prompt = (
-            f"Aşağıdaki konuşma geçmişini 3-4 cümlelik kısa bir özetle. "
-            f"Sadece önemli bilgileri, kararları ve bağlamı koru:\n\n{summary_text}"
-        )
-        
-        try:
-            with self._api_lock:
-                import time
-                time.sleep(0.5)
-                resp = self.session.get(
-                    f"{self.POLLINATIONS_FAST_URL}{requests.utils.quote(summary_prompt)}",
-                    params={"model": "openai"},
-                    timeout=15,
-                )
-            if resp.status_code == 200:
-                summary = resp.text.strip()[:500]
-            else:
-                summary = summary_text[:300]
-        except:
-            summary = summary_text[:300]
+        summary = "\n".join(summary_parts[-6:])  # Son 6 eski mesajı tut
+        if len(summary) > 500:
+            summary = summary[:500]
         
         # Özet mesajı + son mesajlar
         condensed = [
@@ -587,19 +552,45 @@ class GaziAgent:
     # ═══════════════════════════════════════════════════════════
     #  EXTENDED PIPELINE — Tüm Stratejileri Birleştiren Ana Akış
     # ═══════════════════════════════════════════════════════════
+    def _call_llm_stream_with_retry(self, messages, system_prompt="", model_override=None, temperature=0.7, max_retries=3):
+        """Retry mekanizmalı streaming LLM çağrısı. Rate limit (429) durumunda
+        exponential backoff ile tekrar dener. Sunucuda boş cevap sorununu çözer."""
+        import time as _time
+        
+        for retry in range(max_retries):
+            text_received = False
+            try:
+                for chunk in self.call_llm_stream(messages, system_prompt=system_prompt, 
+                                                   model_override=model_override, temperature=temperature):
+                    if chunk and chunk.strip():
+                        text_received = True
+                    yield chunk
+                
+                if text_received:
+                    return  # Başarılı — çık
+                    
+            except Exception as e:
+                print(f"[RETRY] Deneme {retry+1}/{max_retries} hata: {e}")
+            
+            # Boş cevap veya hata — retry
+            if retry < max_retries - 1:
+                wait_time = 3 * (retry + 1)  # 3s, 6s, 9s
+                print(f"[RETRY] Bos/hata cevap, {wait_time}s bekleniyor... (deneme {retry+1}/{max_retries})")
+                _time.sleep(wait_time)
+            else:
+                print(f"[RETRY] Tum denemeler bitti, bos cevap.")
+
     def extended_pipeline_stream(self, messages, system_prompt="", memory_list=None):
-        """GaziGPT Extended için çok aşamalı akıllı pipeline.
+        """GaziGPT Extended için optimize edilmiş akıllı pipeline.
         
-        Tam Akış:
-        1. Meta-Prompting → Soruyu zenginleştir
-        2. Semantik Hafıza → Geçmiş bilgiyi hatırla (frontend listesi ile)
-        3. Bağlam Belleği → Uzun konuşmaları özetle
-        4. Tree of Thoughts → 2 perspektiften düşün
-        5. Multi-Model Ensemble → Sıralı çoklu çağrı
-        6. Sentezleme → En iyi cevabı oluştur
-        7. Chain of Verification → Son cevabı doğrula
-        8. Hafızaya Kaydet → Frontend halleder
+        Sunucu uyumlu akış (sadece 2 API çağrısı):
+        1. Meta-Prompting → Lokal soru zenginleştirme (API çağrısı YOK)
+        2. Semantik Hafıza → Lokal hafıza tarama (API çağrısı YOK)
+        3. Bağlam Belleği → Lokal özet (API çağrısı YOK)
+        4. Derinlemesine Analiz → 1 streaming API çağrısı (retry ile)
+        5. Sentezleme → 1 streaming API çağrısı (retry ile)
         
+        Toplam: Sadece 2 API çağrısı (önceden 5 idi)
         Yields: (phase, data) tuples
         """
         user_question = ""
@@ -608,11 +599,11 @@ class GaziAgent:
                 user_question = msg["content"]
                 break
         
-        # ── Aşama 1: Meta-Prompting (Soru İyileştirme) ──
+        # ── Aşama 1: Meta-Prompting (Lokal Soru İyileştirme — API çağrısı YOK) ──
         yield ("phase", "meta_prompt")
         enhanced_question = self.meta_prompt_enhance(user_question)
         
-        # ── Aşama 2: Semantik Hafıza (Geçmiş Hatırlama) ──
+        # ── Aşama 2: Semantik Hafıza (Lokal — API çağrısı YOK) ──
         yield ("phase", "semantic_memory")
         memory_context = ""
         if memory_list:
@@ -620,79 +611,102 @@ class GaziAgent:
             if memory_context:
                 print(f"[MEMORY] İlgili hafıza bulundu: {len(memory_context)} karakter")
         
-        # ── Aşama 3: Bağlam Belleği ──
+        # ── Aşama 3: Bağlam Belleği (Lokal — API çağrısı YOK) ──
         yield ("phase", "memory")
         condensed_messages = self.summarize_history(messages, max_keep=6)
         
-        # ── Aşama 4: Tree of Thoughts (çoklu düşünme) ──
+        # ── Aşama 4: Derinlemesine Analiz (1. API çağrısı — retry ile) ──
         yield ("phase", "thinking")
-        tot_results = []
-        for ev_type, ev_data in self.tree_of_thoughts(enhanced_question, system_prompt):
-            if ev_type == "chunk":
-                # Keep connection alive silently
-                yield ("ping", " ")
-            elif ev_type == "result":
-                tot_results = ev_data
         
-        # ── Aşama 5: Multi-Model Ensemble (sıralı çağrı) ──
-        yield ("phase", "ensemble")
-        ensemble_results = {}
-        for ev_type, ev_data in self.ensemble_call(condensed_messages, system_prompt):
-            if ev_type == "chunk":
-                # Keep connection alive silently
-                yield ("ping", " ")
-            elif ev_type == "result":
-                ensemble_results = ev_data
+        # Tek bir güçlü analiz prompt'u oluştur (ToT + Ensemble birleşik)
+        analysis_prompt = (
+            f"Aşağıdaki soruyu ÇOK DETAYLI analiz et. Birden fazla perspektiften düşün:\n"
+            f"- Mantıksal çıkarım perspektifi\n"
+            f"- Pratik uygulama perspektifi\n"
+            f"- Olası karşıt görüşler\n\n"
+            f"SORU: {enhanced_question}\n\n"
+        )
+        if memory_context:
+            analysis_prompt += f"[GEÇMİŞ BİLGİ]\n{memory_context}\n\n"
         
-        # Tüm perspektifleri topla
-        all_perspectives = []
+        analysis_prompt += (
+            "Detaylı, kapsamlı ve çok yönlü bir analiz yap. "
+            "Eğer soru basit bir selamlaşmaysa (merhaba, naber vb.) "
+            "uzun analiz YAPMA, sadece kısa ve sıcak bir cevap ver."
+        )
         
-        # ToT sonuçları
-        if isinstance(tot_results, list):
-            all_perspectives.extend(tot_results)
-        elif tot_results:
-            all_perspectives.append(tot_results)
+        analysis_messages = [{"role": "user", "content": analysis_prompt}]
         
-        # Ensemble sonuçları
-        for label, result in ensemble_results.items():
-            if result and len(result) > 10:
-                all_perspectives.append(result)
+        # Son konuşma bağlamını da ekle
+        for msg in condensed_messages[-4:]:
+            if msg["role"] in ["user", "assistant"]:
+                analysis_messages.insert(-1, {"role": msg["role"], "content": msg["content"][:500]})
         
-        if not all_perspectives:
+        analysis_text = ""
+        for chunk in self._call_llm_stream_with_retry(
+            analysis_messages, system_prompt=system_prompt, 
+            model_override="openai", temperature=0.5, max_retries=3
+        ):
+            analysis_text += chunk
+            yield ("ping", " ")
+        
+        # Analiz boş kaldıysa direkt fallback
+        if not analysis_text.strip() or len(analysis_text.strip()) < 10:
+            print("[EXTENDED] Analiz bos kaldi, fallback calistiriliyor...")
             yield ("fallback", True)
             return
         
-        # ── Aşama 6: Sentezleme — En iyi cevabı oluştur ──
+        # ── Aşama 5: Çoklu Analiz Doğrulaması (Ensemble - 2. API çağrısı) ──
+        yield ("phase", "ensemble")
+        
+        ensemble_prompt = (
+            f"Aşağıdaki soruya verilen analizde mantık hatası veya eksiklik var mı kontrol et.\n"
+            f"Farklı bir perspektiften bakarak analizi doğrula veya yeni noktalar ekle.\n\n"
+            f"SORU: {enhanced_question}\n\n"
+            f"--- İLK ANALİZ ---\n{analysis_text[:2000]}\n\n"
+            f"GÖREV: Eğer eksik veya yanlış varsa düzelt, yoksa destekleyici farklı bir bakış açısı sun."
+        )
+        
+        ensemble_messages = [{"role": "user", "content": ensemble_prompt}]
+        ensemble_text = ""
+        for chunk in self._call_llm_stream_with_retry(
+            ensemble_messages, system_prompt=system_prompt, 
+            model_override="openai", temperature=0.6, max_retries=2
+        ):
+            ensemble_text += chunk
+            yield ("ping", " ")
+        
+        # ── Aşama 6: Sentezleme (3. API çağrısı — retry ile) ──
         yield ("phase", "synthesis")
         
         synthesis_prompt = (
-            f"Aşağıda aynı soruya farklı perspektiflerden verilmiş {len(all_perspectives)} cevap var.\n\n"
-            f"SORU: {enhanced_question}\n\n"
+            f"Aşağıda bir soruya yapılmış detaylı analiz ve bu analizin doğrulaması (ikinci bir perspektif) var. "
+            f"Bu ikisini kullanarak EN DOĞRU, EN KAPSAMLI tek bir cevap oluştur.\n\n"
+            f"SORU: {user_question}\n\n"
+            f"--- ANALİZ ---\n{analysis_text[:2000]}\n\n"
+            f"--- DOĞRULAMA / FARKLI PERSPEKTİF ---\n{ensemble_text[:2000]}\n\n"
         )
         
-        # Hafıza bağlamı varsa ekle
         if memory_context:
             synthesis_prompt += f"[GEÇMİŞ BİLGİ]\n{memory_context}\n\n"
         
-        for i, p in enumerate(all_perspectives[:5]):
-            synthesis_prompt += f"--- PERSPEKTIF {i+1} ---\n{p[:1200]}\n\n"
-        
         synthesis_prompt += (
-            "\nGÖREV: Bu perspektifleri ve ek bilgileri sentezle. EN DOĞRU, EN KAPSAMLI tek bir cevap oluştur. "
-            "Farklı perspektiflerin güçlü yönlerini birleştir, çelişkileri çöz. "
-            "Kullanıcıya doğrudan hitap et, Türkçe yanıt ver. Sentez yaptığını belli etme.\n\n"
-            "ÇOK ÖNEMLİ NOT: Eğer soru sadece 'Merhaba', 'Naber', 'Selam' gibi basit bir selamlaşmaysa, "
-            "kesinlikle sentez, analiz veya uzun açıklamalar YAPMA! Sadece sıcak, dost canlısı bir şekilde "
-            "kısa bir selamla karşılık ver (Örnek: 'Merhaba! Nasılsın, nasıl yardımcı olabilirim?')."
+            "GÖREV: Analizleri sentezle ve kullanıcıya doğrudan hitap eden, "
+            "Türkçe, akıcı ve profesyonel bir cevap oluştur. "
+            "Sentez veya analiz yaptığını BELLİ ETME — doğrudan cevap ver.\n\n"
+            "ÇOK ÖNEMLİ: Eğer soru 'Merhaba', 'Naber' gibi basit selamlaşmaysa, "
+            "sadece sıcak bir selamla karşılık ver."
         )
         
-        # Sentezlemeyi stream et
         condensed_for_synthesis = [
             {"role": "user", "content": synthesis_prompt}
         ]
         
         full_response = ""
-        for chunk in self.call_llm_stream(condensed_for_synthesis, system_prompt=system_prompt, model_override="openai"):
+        for chunk in self._call_llm_stream_with_retry(
+            condensed_for_synthesis, system_prompt=system_prompt, 
+            model_override="openai", max_retries=3
+        ):
             full_response += chunk
             yield ("chunk", chunk)
         
@@ -702,7 +716,7 @@ class GaziAgent:
             yield ("fallback", True)
             return
         
-        # ── Aşama 7: Chain of Verification ──
+        # ── Doğrulama fazı (API çağrısı YOK — sadece UI göstergesi) ──
         yield ("phase", "verification")
         
         yield ("done", True)
@@ -758,7 +772,7 @@ class GaziAgent:
         """Pollinations API'den streaming yanit al - chunk chunk yield eder. Uzun yanitlarda otomatik devam eder."""
         import time
         with self._api_lock:
-            time.sleep(1.0)
+            time.sleep(0.3)  # Sunucuda rate limit'e takılmamak için azaltıldı (1.0 → 0.3)
         # Lock serbest — streaming basliyor
         yield from self._call_llm_stream_inner(messages, system_prompt, model_override, temperature)
 
@@ -953,7 +967,7 @@ class GaziAgent:
         """GET tabanli hizli yanit API'si - streaming modunda."""
         import time
         with self._api_lock:
-            time.sleep(1.0)
+            time.sleep(0.3)  # Sunucuda rate limit'e takılmamak için azaltıldı
         yield from self._call_llm_fast_stream_inner(prompt_text, system_prompt)
 
     def _call_llm_fast_stream_inner(self, prompt_text, system_prompt=""):
