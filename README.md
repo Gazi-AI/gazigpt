@@ -66,16 +66,16 @@ GaziGPT, Python tabanlı bir backend ve modern bir frontend ile çalışır.
 ### Kurulum Adımları
 1.  Depoyu klonlayın:
     ```bash
-    git clone https://github.com/emirozcn/gazigpt.git
+    git clone https://github.com/Gazi-AI/gazigpt
     cd gazigpt
     ```
 2.  Bağımlılıkları yükleyin:
     ```bash
-    pip install -r gazigpt/requirements.txt
+    pip install -r requirements.txt
     ```
 3.  Uygulamayı başlatın:
     ```bash
-    python gazigpt/app.py
+    python app.py
     ```
 
 ---
