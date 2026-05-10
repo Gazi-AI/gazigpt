@@ -38,7 +38,7 @@ GaziGPT'nin en güçlü modu olan **Extended**, her mesaj için şu 8 kritik aş
 
 GaziGPT, akıl yürütme ve yanıt kalitesi testlerinde rakiplerine karşı üstün performans sergilemektedir. Aşağıda sistemin doğruluk ve hız performansını görebilirsiniz:
 
-![GaziGPT Benchmark](gazigpt/gazigpt_benchmark.png)
+![GaziGPT Benchmark](gazigpt_benchmark.png)
 
 ---
 
