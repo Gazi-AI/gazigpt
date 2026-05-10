@@ -138,8 +138,7 @@ def api_chat_stream():
                     "meta_prompt": "🧠 Soru zenginleştiriliyor...",
                     "semantic_memory": "💾 Uzun süreli hafıza taranıyor...",
                     "memory": "📚 Bağlam analiz ediliyor...",
-                    "thinking": "🌳 Çoklu perspektiflerden düşünülüyor...",
-                    "ensemble": "🤖 Çoklu analiz doğrulanıyor...",
+                    "thinking": "🌳 Derinlemesine analiz yapılıyor...",
                     "synthesis": "⚡ Sentez oluşturuluyor...",
                     "verification": "✅ Doğrulama yapılıyor...",
                 }
