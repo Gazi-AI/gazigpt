@@ -479,6 +479,18 @@ ${toolBadges}
                         const cursor = bodyEl.querySelector('.stream-cursor');
                         if (cursor) cursor.remove();
                         
+                        // Kalan aktif aşama göstergelerini durdur (Eğer yarıda bitmişse veya fallback olduysa dönmeye devam etmesin)
+                        const activePhase = bodyEl.querySelector('.extended-phase-active');
+                        if (activePhase) {
+                            activePhase.classList.remove('extended-phase-active');
+                            activePhase.querySelector('.phase-spinner')?.remove();
+                            const checkMark = document.createElement('span');
+                            checkMark.style.cssText = 'color:#22c55e;margin-right:6px;';
+                            checkMark.textContent = '✓';
+                            activePhase.prepend(checkMark);
+                            activePhase.style.opacity = '0.6';
+                        }
+                        
                         // Düşünce kutularını kapat
                         bodyEl.querySelectorAll('details.thinking-box').forEach(d => d.removeAttribute('open'));
 
