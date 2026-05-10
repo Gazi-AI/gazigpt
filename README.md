@@ -46,11 +46,10 @@ GaziGPT, akıl yürütme ve yanıt kalitesi testlerinde rakiplerine karşı üst
 
 GaziGPT, dış dünya ile etkileşime girmek için zengin bir araç kütüphanesine sahiptir:
 
-*   🎨 **Image Gen**: Flux tabanlı yüksek kaliteli görsel üretimi.
+*   🎨 **Image Gen**: Yüksek kaliteli görsel üretimi.
 *   🔍 **Web Search**: Gerçek zamanlı internet araması ve veri sentezi.
 *   💻 **Code Exec**: Karmaşık matematiksel ve mantıksal problemler için Python kodu yazma.
-*   🖼️ **Vision**: Gelişmiş görsel analizi ve OCR (Florence-2).
-*   💾 **Cloud Storage**: Puter.com entegrasyonu ile dosya okuma/yazma.
+*   🖼️ **Vision**: Gelişmiş görsel analizi.
 *   🗣️ **Voice (TTS)**: Doğal ve akıcı multilingual sesli yanıtlar (Edge-TTS).
 
 ---
