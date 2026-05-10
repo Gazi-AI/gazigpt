@@ -106,8 +106,7 @@ print(response.choices[0].message.content)
 
 ## 👨‍💻 Geliştirici
 
-**Emir Özcan** - [GitHub](https://github.com/emirozcn)  
-**Gazi AI Team**
+**Emir Özcan** - [GitHub](https://github.com/Gazi-AI)  
 
 ---
 
