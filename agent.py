@@ -656,42 +656,21 @@ class GaziAgent:
             yield ("fallback", True)
             return
         
-        # ── Aşama 5: Çoklu Analiz Doğrulaması (Ensemble - 2. API çağrısı) ──
-        yield ("phase", "ensemble")
-        
-        ensemble_prompt = (
-            f"Aşağıdaki soruya verilen analizde mantık hatası veya eksiklik var mı kontrol et.\n"
-            f"Farklı bir perspektiften bakarak analizi doğrula veya yeni noktalar ekle.\n\n"
-            f"SORU: {enhanced_question}\n\n"
-            f"--- İLK ANALİZ ---\n{analysis_text[:2000]}\n\n"
-            f"GÖREV: Eğer eksik veya yanlış varsa düzelt, yoksa destekleyici farklı bir bakış açısı sun."
-        )
-        
-        ensemble_messages = [{"role": "user", "content": ensemble_prompt}]
-        ensemble_text = ""
-        for chunk in self._call_llm_stream_with_retry(
-            ensemble_messages, system_prompt=system_prompt, 
-            model_override="openai", temperature=0.6, max_retries=2
-        ):
-            ensemble_text += chunk
-            yield ("ping", " ")
-        
-        # ── Aşama 6: Sentezleme (3. API çağrısı — retry ile) ──
+        # ── Aşama 5: Sentezleme (2. API çağrısı — retry ile) ──
         yield ("phase", "synthesis")
         
         synthesis_prompt = (
-            f"Aşağıda bir soruya yapılmış detaylı analiz ve bu analizin doğrulaması (ikinci bir perspektif) var. "
-            f"Bu ikisini kullanarak EN DOĞRU, EN KAPSAMLI tek bir cevap oluştur.\n\n"
+            f"Aşağıda bir soruya yapılmış detaylı analiz var. "
+            f"Bu analizi kullanarak EN DOĞRU, EN KAPSAMLI tek bir cevap oluştur.\n\n"
             f"SORU: {user_question}\n\n"
-            f"--- ANALİZ ---\n{analysis_text[:2000]}\n\n"
-            f"--- DOĞRULAMA / FARKLI PERSPEKTİF ---\n{ensemble_text[:2000]}\n\n"
+            f"--- ANALİZ ---\n{analysis_text[:3000]}\n\n"
         )
         
         if memory_context:
             synthesis_prompt += f"[GEÇMİŞ BİLGİ]\n{memory_context}\n\n"
         
         synthesis_prompt += (
-            "GÖREV: Analizleri sentezle ve kullanıcıya doğrudan hitap eden, "
+            "GÖREV: Analizi sentezle ve kullanıcıya doğrudan hitap eden, "
             "Türkçe, akıcı ve profesyonel bir cevap oluştur. "
             "Sentez veya analiz yaptığını BELLİ ETME — doğrudan cevap ver.\n\n"
             "ÇOK ÖNEMLİ: Eğer soru 'Merhaba', 'Naber' gibi basit selamlaşmaysa, "
