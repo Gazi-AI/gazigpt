@@ -103,6 +103,12 @@ print(response.choices[0].message.content)
 
 ---
 
+---
+
+## Support 🌟
+
+If you find this project useful and want to support its development, please consider giving it a **Star**! It helps the project reach more developers.
+
 ## 👨‍💻 Developer
 
 **Emir Özcan** - [GitHub](https://github.com/Gazi-AI)
