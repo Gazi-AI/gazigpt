@@ -1,87 +1,88 @@
 # 🧠 GaziGPT: The Next-Gen Intelligent Agent System
 
+> **GaziGPT** is a multi-stage AI assistant with complex reasoning capabilities, developed by Emir Özcan. Going beyond standard chatbots, it produces the most accurate and reliable responses by using advanced strategies such as **Tree of Thoughts**, **Chain of Verification**, and **Multi-Model Ensemble**.
 
-
-> **GaziGPT**, Emir Özcan tarafından geliştirilen, karmaşık akıl yürütme (reasoning) yeteneklerine sahip, çok aşamalı bir yapay zeka asistanıdır. Standart chatbotların ötesine geçerek, **Tree of Thoughts**, **Chain of Verification** ve **Multi-Model Ensemble** gibi ileri düzey stratejileri kullanarak en doğru ve güvenilir yanıtları üretir.
+Built with passion by a 13-year-old independent developer. GaziGPT is a solo-driven effort to push the boundaries of autonomous AI.
 
 ---
 
-## 🚀 Öne Çıkan Özellikler
+## 🚀 Key Features
 
-| Özellik | Açıklama |
+| Feature | Description |
 | :--- | :--- |
-| **8 Aşamalı Pipeline** | Soru zenginleştirmeden doğrulamaya kadar uzanan devasa "Extended" akışı. |
-| **UltraThink™ Motoru** | Yanıt vermeden önce derinlemesine analiz yapan iç ses (thinking) mekanizması. |
-| **Semantik Hafıza** | Uzun süreli konuşmaları hatırlayan, kosinüs benzerliği tabanlı akıllı bellek. |
-| **Gelişmiş Araç Seti** | Web araması, görsel üretimi|
-| **OpenAI Uyumluluğu** | Mevcut tüm OpenAI SDK'ları ve uygulamalarıyla doğrudan API uyumluluğu. |
-| **Premium UI/UX** | Gerçek zamanlı düşünme süreci görselleştirmesi ve modern, akıcı arayüz. |
+| **8-Stage Pipeline** | A massive "Extended" workflow ranging from prompt enrichment to verification. |
+| **UltraThink™ Engine** | An "inner voice" (thinking) mechanism that performs in-depth analysis before responding. |
+| **Semantic Memory** | Smart cosine-similarity-based memory that remembers long-term conversations. |
+| **Advanced Toolset** | Web search, image generation, vision analysis, and more. |
+| **OpenAI Compatibility** | Direct API compatibility with all existing OpenAI SDKs and applications. |
+| **Premium UI/UX** | Real-time visualization of the thinking process with a modern, fluid interface. |
 
 ---
 
-## 🏗️ GaziGPT "Extended" Pipeline Nasıl Çalışır?
+## 🏗️ How the GaziGPT "Extended" Pipeline Works?
 
-GaziGPT'nin en güçlü modu olan **Extended**, her mesaj için şu 8 kritik aşamadan geçer:
+GaziGPT's most powerful mode, **Extended**, goes through 8 critical stages for every message:
 
-1.  **🧠 Meta-Prompting**: Kullanıcının sorusu analiz edilir ve daha net, detaylı bir forma dönüştürülür.
-2.  **💾 Semantik Hafıza**: Geçmiş konuşmalardan ilgili bilgiler vektörel benzerlik ile geri çağrılır.
-3.  **📚 Bağlam Özeti**: Uzun konuşma geçmişi, en önemli noktalar korunacak şekilde özetlenir.
-4.  **🌳 Tree of Thoughts**: Problem, birden fazla perspektiften aynı anda (paralel) düşünülür.
-5.  **🤖 Multi-Model Ensemble**: Farklı model yapılandırmalarıyla sıralı analizler yapılır.
-6.  **⚡ Sentezleme**: Tüm perspektifler ve veriler birleştirilerek nihai, kusursuz cevap oluşturulur.
-7.  **✅ Chain of Verification**: Üretilen cevap, mantıksal hatalara karşı son bir kez denetlenir.
-8.  **💾 Hafıza Kaydı**: Yeni bilgiler bir sonraki etkileşim için yerel hafızaya güvenli bir şekilde kaydedilir.
-
----
-
-## 📊 Benchmark Sonuçları
-
-GaziGPT, akıl yürütme ve yanıt kalitesi testlerinde rakiplerine karşı üstün performans sergilemektedir. Aşağıda sistemin doğruluk ve hız performansını görebilirsiniz:
-
-![GaziGPT Benchmark](gazigpt_benchmark.png)
+1.  **🧠 Meta-Prompting**: The user's question is analyzed and transformed into a clearer, more detailed form.
+2.  **💾 Semantic Memory**: Relevant information from past conversations is recalled using vector similarity.
+3.  **📚 Context Summary**: Long conversation history is summarized while preserving the most important points.
+4.  **🌳 Tree of Thoughts**: Problems are considered from multiple perspectives simultaneously (in parallel).
+5.  **🤖 Multi-Model Ensemble**: Sequential analyses are performed with different model configurations.
+6.  **⚡ Synthesis**: All perspectives and data are combined to create the final, flawless answer.
+7.  **✅ Chain of Verification**: The generated response is checked one last time against logical errors.
+8.  **💾 Memory Storage**: New information is securely saved to local memory for the next interaction.
 
 ---
 
-## 🛠️ Araç Seti (Tools)
+## 📊 Benchmark Results
 
-GaziGPT, dış dünya ile etkileşime girmek için zengin bir araç kütüphanesine sahiptir:
+GaziGPT demonstrates superior performance against competitors in reasoning and response quality tests. Below you can see the accuracy and speed performance of the system:
 
-*   🎨 **Image Gen**: Yüksek kaliteli görsel üretimi.
-*   🔍 **Web Search**: Gerçek zamanlı internet araması ve veri sentezi.
-*   💻 **Code Exec**: Karmaşık matematiksel ve mantıksal problemler için Python kodu yazma.
-*   🖼️ **Vision**: Gelişmiş görsel analizi.
-*   🗣️ **Voice (TTS)**: Doğal ve akıcı multilingual sesli yanıtlar (Edge-TTS).
+![GaziGPT Benchmark](gazigpt/gazigpt_benchmark.png)
 
 ---
 
-## 💻 Teknik Kurulum
+## 🛠️ Toolset
 
-GaziGPT, Python tabanlı bir backend ve modern bir frontend ile çalışır.
+GaziGPT has a rich library of tools to interact with the outside world:
 
-### Gereksinimler
+*   🎨 **Image Gen**: High-quality artistic image generation.
+*   🔍 **Web Search**: Real-time internet search and data synthesis.
+*   💻 **Code Exec**: Writing Python code for complex mathematical and logical problems.
+*   🖼️ **Vision**: Advanced image analysis.
+*   💾 **Memory Systems**: Secure storage for long-term context and conversation history.
+*   🗣️ **Voice (TTS)**: Natural and fluent multilingual voice responses (Edge-TTS).
+
+---
+
+## 💻 Technical Setup
+
+GaziGPT works with a Python-based backend and a modern frontend.
+
+### Requirements
 *   Python 3.10+
 *   pip
 
-### Kurulum Adımları
-1.  Depoyu klonlayın:
+### Installation Steps
+1.  Clone the repository:
     ```bash
     git clone https://github.com/Gazi-AI/gazigpt
     cd gazigpt
     ```
-2.  Bağımlılıkları yükleyin:
+2.  Install dependencies:
     ```bash
     pip install -r requirements.txt
     ```
-3.  Uygulamayı başlatın:
+3.  Start the application:
     ```bash
     python app.py
     ```
 
 ---
 
-## 🔌 API Kullanımı (OpenAI Compatible)
+## 🔌 API Usage (OpenAI Compatible)
 
-GaziGPT'yi kendi projelerinize entegre etmek çok kolaydır.
+Integrating GaziGPT into your own projects is very easy.
 
 **Base URL:** `http://localhost:5000/v1`  
 **API Key:** `gazigpt`
@@ -96,7 +97,7 @@ client = openai.OpenAI(
 
 response = client.chat.completions.create(
     model="gazigpt-extended",
-    messages=[{"role": "user", "content": "Kuantum bilgisayarları açıkla."}]
+    messages=[{"role": "user", "content": "Explain quantum computers."}]
 )
 
 print(response.choices[0].message.content)
@@ -104,10 +105,10 @@ print(response.choices[0].message.content)
 
 ---
 
-## 👨‍💻 Geliştirici
+## 👨‍💻 Developer
 
-**Emir Özcan** - [GitHub](https://github.com/Gazi-AI)  
+**Emir Özcan** - [GitHub](https://github.com/Gazi-AI)
 
 ---
 
-> *"GaziGPT bir cevap makinesi değil, bir düşünce ortağıdır."*
+> *"GaziGPT is not an answer machine, it is a thought partner."*
