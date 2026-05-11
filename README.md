@@ -2,8 +2,6 @@
 
 > **GaziGPT** is a multi-stage AI assistant with complex reasoning capabilities, developed by Emir Özcan. Going beyond standard chatbots, it produces the most accurate and reliable responses by using advanced strategies such as **Tree of Thoughts**, **Chain of Verification**, and **Multi-Model Ensemble**.
 
-Built with passion by a 13-year-old independent developer. GaziGPT is a solo-driven effort to push the boundaries of autonomous AI.
-
 ---
 
 ## 🚀 Key Features
