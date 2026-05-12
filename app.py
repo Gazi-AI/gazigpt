@@ -273,7 +273,6 @@ def api_chat_stream():
                                 synthetic_tool_json = _json.dumps({"tool": tool_name, "params": {}})
                                 tool_matches = [synthetic_tool_json]
                             break
-
             if tool_matches:
                 tool_names_start = []
                 for m in tool_matches:
@@ -423,9 +422,8 @@ def api_analyze_image():
 
         img_bytes = base64.b64decode(image_data)
 
-        # Temp dosyaya yaz
-        upload_dir = os.path.join(os.path.dirname(__file__), "static", "uploads")
-        os.makedirs(upload_dir, exist_ok=True)
+        # Temp dosyaya yaz (Vercel'de sadece /tmp yazılabilir)
+        upload_dir = tempfile.gettempdir()
         temp_filename = f"{uuid.uuid4().hex}_{filename}"
         filepath = os.path.join(upload_dir, temp_filename)
 
@@ -434,7 +432,6 @@ def api_analyze_image():
 
         # Gorsel analiz motoru
         from gradio_client import Client, handle_file
-
         client_vision = Client("gokaygokay/Florence-2")
 
         # Detayli Caption + OCR dene
@@ -464,7 +461,7 @@ def api_analyze_image():
             if ocr_res and ocr_res[0] and ocr_res[0].strip():
                 results.append(f"[Gorseldeki Metin (OCR)]\n{ocr_res[0]}")
         except Exception as oe:
-            pass  # OCR basarisiz olabilir, sorun degil
+            pass 
 
         # Temp dosyayi sil
         try:
