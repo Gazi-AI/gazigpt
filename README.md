@@ -36,7 +36,7 @@ GaziGPT's most powerful mode, **Extended**, goes through 8 critical stages for e
 
 GaziGPT demonstrates superior performance against competitors in reasoning and response quality tests. Below you can see the accuracy and speed performance of the system:
 
-![GaziGPT Benchmark](gazigpt/gazigpt_benchmark.png)
+![GaziGPT Benchmark](gazigpt_benchmark.png)
 
 ---
 
