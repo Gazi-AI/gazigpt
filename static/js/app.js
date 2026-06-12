@@ -10,7 +10,13 @@ const state = {
     deleteTargetId: null,
     attachedFile: null,   // { name, content }
     abortController: null, // streaming iptal için
-    selectedModel: 'GaziGPT' // Default model
+    selectedModel: 'GaziGPT', // Default model
+    selectedEffort: 'no',
+    contextLimits: {
+        'GaziGPT': 128000,
+        'GaziGPT Extended': 128000,
+        'GaziGPT Hyper': 384000,
+    },
 };
 
 // ─── STORAGE HELPERS ─────────────────────────
@@ -46,6 +52,7 @@ const DOM = {
     messageInput: $('#messageInput'),
     sendBtn: $('#sendBtn'),
     stopBtn: $('#stopBtn'),
+    contextMeter: $('#contextMeter'),
     charCount: $('#charCount'),
     newChatBtn: $('#newChatBtn'),
     toggleSidebar: $('#toggleSidebar'),
@@ -81,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     loadLogo();
     loadVoices();
+    updateContextMeter();
 });
 
 async function loadLogo() {
@@ -90,6 +98,10 @@ async function loadLogo() {
         if (data.logo) {
             logoSrc = data.logo;
             applyLogoToEmptyState();
+        }
+        if (data.context_limits) {
+            state.contextLimits = { ...state.contextLimits, ...data.context_limits };
+            updateContextMeter();
         }
     } catch (e) { /* logo yoksa varsayılan SVG kalır */ }
 }
@@ -139,6 +151,7 @@ function renderChatList(filter = '') {
 function createChat() {
     state.currentChatId = null;
     showEmptyState();
+    updateContextMeter();
     DOM.messageInput.focus();
 }
 
@@ -150,6 +163,7 @@ function selectChat(chatId) {
         renderChatList();
         showChatView(chat.messages);
     }
+    updateContextMeter();
     DOM.sidebar.classList.remove('open');
     DOM.sidebarOverlay.classList.remove('open');
 }
@@ -163,6 +177,7 @@ function deleteChat(chatId) {
         showEmptyState();
     }
     renderChatList();
+    updateContextMeter();
     showToast('Sohbet silindi', 'success');
 }
 
@@ -171,6 +186,7 @@ function clearAllChats() {
     state.currentChatId = null;
     showEmptyState();
     renderChatList();
+    updateContextMeter();
     showToast('Tüm sohbetler silindi', 'success');
 }
 
@@ -184,6 +200,7 @@ function showChatView(messages) {
         if (!m.is_system) appendMessage(m.role, m.content, m.timestamp, false);
     });
     scrollToBottom();
+    updateContextMeter();
     DOM.messageInput.focus();
 }
 
@@ -241,6 +258,7 @@ async function sendMessage() {
     if (!chat) { state.isLoading = false; DOM.sendBtn.disabled = false; return; }
 
     chat.messages.push({ role: 'user', content: message, timestamp: ts });
+    updateContextMeter();
     if (chat.messages.length === 1) {
         chat.title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
     }
@@ -298,6 +316,7 @@ async function sendMessage() {
                 file_content: fileContent,
                 image_ratio: document.getElementById('imageRatio')?.value || '1:1',
                 model: state.selectedModel,
+                effort: state.selectedEffort,
                 long_term_memory: longTermMemory,
             }),
             signal: state.abortController.signal,
@@ -516,6 +535,7 @@ ${toolBadges}
         // Mesajı kaydet
         if (finalText || fullText) {
             chat.messages.push({ role: 'assistant', content: finalText || fullText, timestamp: ats });
+            updateContextMeter();
             
             // Uzun süreli hafızaya kaydet
             if (state.selectedModel === 'GaziGPT Extended') {
@@ -564,6 +584,7 @@ ${toolBadges}
             if (fullText || prefixHTML || suffixHTML) {
                 const partialText = (prefixHTML ? prefixHTML + "\n\n" : "") + fullText + (suffixHTML ? "\n\n" + suffixHTML : "");
                 chat.messages.push({ role: 'assistant', content: partialText, timestamp: ats });
+                updateContextMeter();
             }
             // Cursor temizle
             const cursorEl = document.querySelector('.message-assistant:last-child .stream-cursor');
@@ -578,6 +599,7 @@ ${toolBadges}
     all[state.currentChatId] = chat;
     saveChatsToStorage(all);
     renderChatList();
+    updateContextMeter();
 
     state.isLoading = false;
     state.abortController = null;
@@ -790,6 +812,7 @@ function handleFileSelect(e) {
                 previewThumb.src = base64Data;
                 previewImg.style.display = 'block';
             }
+            updateContextMeter();
         };
         reader.readAsDataURL(file);
     } else {
@@ -806,6 +829,7 @@ function handleFileSelect(e) {
             // Önizleme gizle
             const previewImg = document.getElementById('filePreviewImage');
             if (previewImg) previewImg.style.display = 'none';
+            updateContextMeter();
         };
         reader.readAsText(file);
     }
@@ -818,6 +842,7 @@ function clearFileAttachment() {
     DOM.filePreviewName.textContent = '';
     const previewImg = document.getElementById('filePreviewImage');
     if (previewImg) previewImg.style.display = 'none';
+    updateContextMeter();
 }
 
 // ─── DELETE MODAL ────────────────────────────
@@ -914,9 +939,45 @@ function setQuickPrompt(text) {
     DOM.messageInput.value = text;
     DOM.messageInput.focus();
     updateCharCount();
+    updateContextMeter();
     autoResize();
 }
-function updateCharCount() { DOM.charCount.textContent = DOM.messageInput.value.length; }
+function estimateTokens(text) {
+    if (!text) return 0;
+    return Math.max(1, Math.ceil(String(text).length / 4));
+}
+function getContextLimit(modelName = state.selectedModel) {
+    return state.contextLimits[modelName] || state.contextLimits.GaziGPT || 128000;
+}
+function getCurrentContextTokens() {
+    let total = 0;
+    const all = loadChatsFromStorage();
+    const chat = state.currentChatId ? all[state.currentChatId] : null;
+    if (chat && Array.isArray(chat.messages)) {
+        chat.messages.forEach(m => {
+            if (!m.is_system && m.content) total += estimateTokens(m.content) + 4;
+        });
+    }
+    const draft = DOM.messageInput?.value || '';
+    if (draft.trim()) total += estimateTokens(draft) + 4;
+    if (state.attachedFile?.content) total += estimateTokens(state.attachedFile.content) + 4;
+    return total;
+}
+function updateContextMeter() {
+    if (!DOM.contextMeter) return;
+    const used = getCurrentContextTokens();
+    const limit = getContextLimit();
+    const pct = Math.max(0, Math.min(100, (used / limit) * 100));
+    const tooltip = `${used}/${limit} token`;
+    DOM.contextMeter.style.setProperty('--context-fill', pct.toFixed(1) + '%');
+    DOM.contextMeter.title = tooltip;
+    DOM.contextMeter.dataset.tooltip = tooltip;
+    DOM.contextMeter.setAttribute('aria-label', `Bağlam kullanımı: ${tooltip}`);
+}
+function updateCharCount() {
+    DOM.charCount.textContent = DOM.messageInput.value.length;
+    updateContextMeter();
+}
 function autoResize() {
     DOM.messageInput.style.height = 'auto';
     DOM.messageInput.style.height = Math.min(DOM.messageInput.scrollHeight, 200) + 'px';
@@ -1128,6 +1189,7 @@ function setupEventListeners() {
                         previewThumb.src = base64Data;
                         previewImg.style.display = 'block';
                     }
+                    updateContextMeter();
                     showToast('Gorsel yapistirild!', 'success');
                 };
                 reader.readAsDataURL(file);
@@ -1191,10 +1253,44 @@ function setupModelSelector() {
             currentName.textContent = modelName;
             state.selectedModel = modelName;
             dropdown.classList.remove('show');
+            updateContextMeter();
+
+            const effortSelect = document.getElementById('effortSelect');
+            if (effortSelect) {
+                const options = effortSelect.options;
+                if (modelName === 'GaziGPT') {
+                    for (let i = 0; i < options.length; i++) {
+                        if (options[i].value === 'no') {
+                            options[i].disabled = false;
+                        } else {
+                            options[i].disabled = true;
+                            options[i].title = 'Bu efor seviyesi diğer modellerde kullanılabilir.';
+                        }
+                    }
+                    effortSelect.disabled = false; // Select itself is enabled so user can see options
+                    effortSelect.value = 'no';
+                    state.selectedEffort = 'no';
+                    effortSelect.title = 'GaziGPT için diğer seçenekler kapalıdır.';
+                } else {
+                    for (let i = 0; i < options.length; i++) {
+                        options[i].disabled = false;
+                        options[i].title = '';
+                    }
+                    effortSelect.disabled = false;
+                    effortSelect.title = '';
+                }
+            }
             
             showToast(modelName + ' seçildi', 'success');
         });
     });
+
+    const effortSelect = document.getElementById('effortSelect');
+    if (effortSelect) {
+        effortSelect.addEventListener('change', (e) => {
+            state.selectedEffort = e.target.value;
+        });
+    }
 }
 document.addEventListener('DOMContentLoaded', setupModelSelector);
 
