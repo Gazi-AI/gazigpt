@@ -13,3 +13,5 @@ python-dateutil==2.9.0
 gunicorn
 gradio_client
 edge-tts==7.2.8
+g4f[all]
+p2d-duck==1.2.0
