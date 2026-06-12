@@ -69,19 +69,19 @@
                             </div>
                             <div class="model-check"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
                         </div>
-                        <div class="model-option" data-model="GaziGPT Thinking">
-                            <div class="model-icon">🧠</div>
-                            <div class="model-info">
-                                <div class="model-title">GaziGPT Thinking</div>
-                                <div class="model-desc">Düşünme kapasitesine sahip akıllı model</div>
-                            </div>
-                            <div class="model-check"></div>
-                        </div>
                         <div class="model-option" data-model="GaziGPT Extended">
                             <div class="model-icon">✨</div>
                             <div class="model-info">
                                 <div class="model-title">GaziGPT Extended</div>
-                                <div class="model-desc">En yüksek zeka ve hafıza kapasitesi</div>
+                                <div class="model-desc">Akıllı hafıza ve yüksek zeka ile kusursuz uzun sohbetler</div>
+                            </div>
+                            <div class="model-check"></div>
+                        </div>
+                        <div class="model-option" data-model="GaziGPT Hyper">
+                            <div class="model-icon">🚀</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT Hyper</div>
+                                <div class="model-desc">En üst düzey yapay zeka performansı ve derin düşünme</div>
                             </div>
                             <div class="model-check"></div>
                         </div>
@@ -136,11 +136,26 @@
             <!-- Input Area -->
             <div class="input-area" id="inputArea">
                 <div class="input-container">
+                    <div class="effort-wrapper">
+                        <div class="effort-selector">
+                            <span class="effort-label">🧠 Effort:</span>
+                            <select id="effortSelect" class="effort-select" title="GaziGPT için diğer seçenekler kapalıdır.">
+                                <option value="no">No (Yok)</option>
+                                <option value="low" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">Low (Hızlı)</option>
+                                <option value="medium" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">Medium (Dengeli)</option>
+                                <option value="high" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">High (Detaylı)</option>
+                                <option value="xhigh" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">XHigh (Derin)</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="input-wrapper">
                         <button class="attach-btn" id="attachBtn" title="Dosya ekle">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                         </button>
                         <textarea id="messageInput" placeholder="Mesajınızı yazın... (Shift+Enter yeni satır)" rows="1"></textarea>
+                        <button class="context-meter" id="contextMeter" type="button" aria-label="Bağlam kullanımı" title="0/128000 token">
+                            <span class="context-meter-fill"></span>
+                        </button>
                         <button class="send-btn" id="sendBtn" title="Gönder">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                         </button>
