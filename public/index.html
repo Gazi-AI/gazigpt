@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GaziGPT - Ücretsiz ve sınırsız AI asistanı">
+    <meta name="google-site-verification" content="mMZy1gUzIV4K1KM30ET89fOn_Jm7FUMcoQf4JbWqYYA" />
+    <title>GaziGPT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container" id="appContainer">
+
+        <!-- ===== SIDEBAR ===== -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="sidebar-close-btn" id="closeSidebar" title="Paneli Kapat">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+
+            <div class="sidebar-nav">
+                <button class="nav-item new-chat-btn-nav" id="newChatBtn" title="Yeni Sohbet (Ctrl+N)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    <span>Yeni sohbet</span>
+                </button>
+                <button class="nav-item" id="navSearchChatsBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <span>Sohbetlerde ara</span>
+                </button>
+                <a class="nav-item" id="navSeekSiteBtn" href="https://github.com/Gazi-AI/SeekSite" target="_blank" style="text-decoration: none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    <span>Try SeekSite</span>
+                </a>
+                <div class="nav-item-wrapper">
+                    <button class="nav-item" id="navProjectsBtn">
+                        <div class="nav-item-left">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                            <span>Projeler</span>
+                        </div>
+                        <span class="expand-arrow" id="projectsArrow">▶</span>
+                    </button>
+                    <div class="projects-submenu" id="projectsSubmenu" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div class="sidebar-search" id="sidebarSearchContainer" style="display: none;">
+                <div class="search-box">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="searchChats" placeholder="Sohbet ara...">
+                </div>
+            </div>
+
+            <div class="chat-list" id="chatList"></div>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-footer-btn" id="settingsBtn" title="Ayarlar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    <span>Ayarlar</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="top-header">
+                <button class="toggle-sidebar" id="toggleSidebar" title="Menüyü aç/kapat">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
+                
+                <div class="model-selector">
+                    <button class="model-selector-btn" id="modelSelectorBtn">
+                        <span id="currentModelName">GaziGPT</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="model-dropdown" id="modelDropdown">
+                        <div class="model-option active" data-model="GaziGPT">
+                            <div class="model-icon">⚡</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT</div>
+                                <div class="model-desc">Günlük görevler için harika</div>
+                            </div>
+                            <div class="model-check"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+                        </div>
+                        <div class="model-option" data-model="GaziGPT Extended">
+                            <div class="model-icon">✨</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT Extended</div>
+                                <div class="model-desc">Akıllı hafıza ve yüksek zeka ile kusursuz uzun sohbetler</div>
+                            </div>
+                            <div class="model-check"></div>
+                        </div>
+                        <div class="model-option" data-model="GaziGPT Hyper">
+                            <div class="model-icon">🚀</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT Hyper</div>
+                                <div class="model-desc">En üst düzey yapay zeka performansı ve derin düşünme</div>
+                            </div>
+                            <div class="model-check"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div class="empty-state" id="emptyState">
+                <div class="empty-logo">
+                    <div class="logo-glow"></div>
+                    <div class="logo-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="url(#logoGrad)" stroke-width="1.5">
+                            <defs><linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#a78bfa"/><stop offset="50%" style="stop-color:#818cf8"/><stop offset="100%" style="stop-color:#6366f1"/></linearGradient></defs>
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                    </div>
+                </div>
+                <h1 class="empty-title">GaziGPT</h1>
+                <p class="empty-subtitle">Araçlarla güçlendirilmiş, sınırsız AI asistanı</p>
+                <div class="feature-cards">
+                    <div class="feature-card" onclick="setQuickPrompt('Bugün İstanbul hava durumu nasıl?')">
+                        <span class="feature-icon">🌤️</span>
+                        <span class="feature-text">Hava durumu sor</span>
+                    </div>
+                    <div class="feature-card" onclick="setQuickPrompt('Hello World cümlesini İngilizce\'den Japonca\'ya çevir')">
+                        <span class="feature-icon">🌐</span>
+                        <span class="feature-text">Metin çevir</span>
+                    </div>
+                    <div class="feature-card" onclick="setQuickPrompt('1 USD kaç TRY?')">
+                        <span class="feature-icon">💱</span>
+                        <span class="feature-text">Döviz kuru sorgula</span>
+                    </div>
+                    <div class="feature-card" onclick="setQuickPrompt('Yapay zeka nedir? Wikipedia\'dan araştır')">
+                        <span class="feature-icon">📚</span>
+                        <span class="feature-text">Wikipedia araması</span>
+                    </div>
+                    <div class="feature-card" onclick="setQuickPrompt('https://example.com sayfasının içeriğini oku')">
+                        <span class="feature-icon">📄</span>
+                        <span class="feature-text">Web sayfası oku</span>
+                    </div>
+                    <div class="feature-card" onclick="document.getElementById('fileInput').click()">
+                        <span class="feature-icon">📎</span>
+                        <span class="feature-text">Dosya ekle</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages -->
+            <div class="chat-messages" id="chatMessages" style="display:none;"></div>
+
+            <!-- Projeler Dashboard -->
+            <div class="projects-dashboard" id="projectsDashboard" style="display:none;">
+                <div class="projects-dash-header">
+                    <h2 class="projects-dash-title">Projeler</h2>
+                    <div class="projects-dash-actions">
+                        <div class="project-search-box">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="searchProjectsInput" placeholder="Projelerde ara...">
+                        </div>
+                        <button class="new-project-btn" id="newProjectDashBtn">Yeni</button>
+                    </div>
+                </div>
+                <div class="projects-dash-filters">
+                    <button class="filter-tab active" data-filter="all">Tümü</button>
+                    <button class="filter-tab" data-filter="mine">Senin oluşturdukların</button>
+                    <button class="filter-tab" data-filter="shared">Seninle paylaşılanlar</button>
+                </div>
+                <div class="projects-dash-content" id="projectsDashContent">
+                    <!-- Empty or populated dynamic layout -->
+                </div>
+            </div>
+
+            <!-- Proje Çalışma Alanı (Workspace) -->
+            <div class="project-workspace" id="projectWorkspace" style="display:none;">
+                <div class="workspace-left">
+                    <div class="file-explorer">
+                        <div class="explorer-header">
+                            <div class="explorer-title-row">
+                                <span class="explorer-title" id="workspaceProjectName">Proje Adı</span>
+                                <button class="close-workspace-btn" id="closeWorkspaceBtn" title="Projeden Çık">✕</button>
+                            </div>
+                            <div class="explorer-actions">
+                                <span class="explorer-files-label">Dosyalar</span>
+                            </div>
+                        </div>
+                        <div class="file-tree" id="projectFileTree">
+                            <!-- Dynamic file nodes -->
+                        </div>
+                    </div>
+                    <div class="project-chat-pane">
+                        <div class="project-chat-messages" id="projectChatMessages"></div>
+                        <div class="file-preview" id="projectFilePreview" style="display:none; padding: 8px 16px; background: var(--bg-secondary); border-top: 1px solid var(--border-color); align-items: center; gap: 10px;">
+                            <div class="file-preview-image" id="projectFilePreviewImage" style="display:none;">
+                                <img id="projectFilePreviewThumb" src="" alt="Önizleme" style="max-height: 30px; border-radius: 4px;">
+                            </div>
+                            <span class="file-preview-name" id="projectFilePreviewName" style="font-size: 0.8rem; color: var(--text-secondary);"></span>
+                            <button class="file-preview-remove" id="projectFilePreviewRemove" title="Kaldır" style="background: none; border: none; color: var(--text-muted); cursor: pointer;">✕</button>
+                        </div>
+                        <div class="project-chat-input-area">
+                            <button class="attach-btn" id="projectAttachBtn" title="Dosya ekle" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--text-muted); cursor: pointer; border-radius: var(--radius-sm);">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                            </button>
+                            <textarea id="projectMessageInput" placeholder="Projeye talimat yazın... (Örn: Hakkında sayfası ekle)" rows="1"></textarea>
+                            <button class="project-send-btn" id="projectSendBtn" title="Gönder">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="workspace-right">
+                    <div class="workspace-right-header">
+                        <div class="active-file-badge" id="activeFileBadge">index.html</div>
+                        <div class="workspace-tabs">
+                            <button class="workspace-tab active" id="tabCodeBtn" title="Kod Görünümü">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                                <span>Kod</span>
+                            </button>
+                            <button class="workspace-tab" id="tabPreviewBtn" title="Önizleme">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <span>Önizleme</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="workspace-viewer">
+                        <div class="code-viewer-container" id="projectCodeContainer">
+                            <pre><code class="language-html" id="projectCodeBlock"></code></pre>
+                        </div>
+                        <div class="preview-container" id="projectPreviewContainer" style="display:none;">
+                            <iframe id="projectPreviewIframe" sandbox="allow-scripts allow-same-origin" title="Website Önizleme"></iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area" id="inputArea">
+                <div class="input-container">
+                    <div class="effort-wrapper">
+                        <div class="effort-selector">
+                            <span class="effort-label">🧠 Effort:</span>
+                            <select id="effortSelect" class="effort-select" title="GaziGPT için diğer seçenekler kapalıdır.">
+                                <option value="no">No (Yok)</option>
+                                <option value="low" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">Low (Hızlı)</option>
+                                <option value="medium" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">Medium (Dengeli)</option>
+                                <option value="high" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">High (Detaylı)</option>
+                                <option value="xhigh" disabled title="Bu efor seviyesi diğer modellerde kullanılabilir.">XHigh (Derin)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-wrapper">
+                        <button class="attach-btn" id="attachBtn" title="Dosya ekle">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        </button>
+                        <textarea id="messageInput" placeholder="Mesajınızı yazın... (Shift+Enter yeni satır)" rows="1"></textarea>
+                        <button class="context-meter" id="contextMeter" type="button" aria-label="Bağlam kullanımı" title="0/128000 token">
+                            <span class="context-meter-fill"></span>
+                        </button>
+                        <button class="send-btn" id="sendBtn" title="Gönder">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
+                        <button class="stop-btn" id="stopBtn" title="Yanıtı Durdur" style="display:none;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        </button>
+                    </div>
+                    <div class="file-preview" id="filePreview" style="display:none;">
+                        <div class="file-preview-image" id="filePreviewImage" style="display:none;">
+                            <img id="filePreviewThumb" src="" alt="Önizleme">
+                        </div>
+                        <span class="file-preview-name" id="filePreviewName"></span>
+                        <button class="file-preview-remove" id="filePreviewRemove" title="Kaldır">✕</button>
+                    </div>
+                    <input type="file" id="fileInput" style="display:none" accept=".txt,.py,.js,.ts,.json,.csv,.html,.css,.md,.xml,.yaml,.yml,.ini,.cfg,.log,.sql,.sh,.bat,.c,.cpp,.h,.java,.rb,.php,.go,.rs,.swift,.kt,.png,.jpg,.jpeg,.gif,.webp">
+                    <div class="input-footer">
+                        <span class="char-count" id="charCount">0</span>
+                        <div class="ratio-selector">
+                            <span class="ratio-label">🖼️ Görsel:</span>
+                            <select id="imageRatio" class="ratio-select">
+                                <option value="1:1">Kare (1:1)</option>
+                                <option value="4:3">Yatay (4:3)</option>
+                                <option value="16:9">Geniş (16:9)</option>
+                                <option value="3:4">Dikey (3:4)</option>
+                                <option value="9:16">Uzun (9:16)</option>
+                            </select>
+                        </div>
+                        <span class="input-hint">GaziGPT gerektiğinde araçları otomatik kullanır</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Audio element for TTS -->
+    <audio id="ttsAudio" style="display:none;"></audio>
+
+    <!-- ===== MODAL: Silme Onayı ===== -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-content">
+            <div class="modal-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </div>
+            <h3 class="modal-title">Sohbeti Sil</h3>
+            <p class="modal-text">Bu sohbet kalıcı olarak silinecek. Devam etmek istiyor musun?</p>
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-cancel" id="cancelDelete">İptal</button>
+                <button class="modal-btn modal-btn-delete" id="confirmDelete">Sil</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: Proje Oluştur ===== -->
+    <div class="modal-overlay" id="createProjectModal">
+        <div class="modal-content">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; width:100%; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:12px; margin-bottom:16px;">
+                <h3 class="modal-title" style="margin:0;">Proje oluştur</h3>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="cursor:pointer; opacity:0.7;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <button class="modal-close" id="closeCreateProject" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem;">✕</button>
+                </div>
+            </div>
+            <div class="settings-body" style="width:100%;">
+                <div class="settings-group" style="margin-bottom:16px;">
+                    <label class="settings-label" style="display:block; margin-bottom:8px; color:var(--text-secondary); font-size:0.9rem;">Proje ismi</label>
+                    <div style="position:relative; width:100%;">
+                        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:1.1rem; opacity:0.6;">🥳</span>
+                        <input type="text" id="newProjectNameInput" placeholder="Kopenhag Gezisi" style="width:100%; padding:10px 12px 10px 38px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#fff; font-size:0.95rem;">
+                    </div>
+                </div>
+                <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); border-radius:10px; padding:12px; margin-bottom:20px; display:flex; gap:12px; align-items:flex-start;">
+                    <span style="font-size:1.2rem; opacity:0.8;">💡</span>
+                    <p style="margin:0; font-size:0.82rem; color:var(--text-muted); line-height:1.4;">Projeler sohbetleri, dosyaları ve özel talimatları tek bir yerde tutar. Bunları devam eden işler için veya işleri düzene koymak için kullan.</p>
+                </div>
+                <div style="display:flex; justify-content:flex-end;">
+                    <button class="new-project-btn" id="confirmCreateProjectBtn" style="padding:10px 20px; font-weight:500;">Proje oluştur</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: Ayarlar ===== -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 class="modal-title">⚙️ Ayarlar</h3>
+                <button class="modal-close" id="closeSettings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-group">
+                    <label class="settings-label">Yazı Boyutu: <span id="fontSizeValue">14</span>px</label>
+                    <input type="range" id="settingsFontSize" class="settings-range" min="12" max="20" value="14">
+                </div>
+                <div class="settings-group settings-toggle-group">
+                    <label class="settings-label">Enter ile Gönder</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="settingsEnterSend" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-group">
+                    <label class="settings-label">Yaşasın Ses (TTS):</label>
+                    <select id="settingsVoice" class="settings-select">
+                        <option value="">Yükleniyor...</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <button class="settings-save-btn" id="saveSettingsBtn">Kaydet</button>
+                </div>
+                <div class="settings-group settings-danger-zone">
+                    <label class="settings-label" style="color:var(--danger)">Tehlikeli Bölge</label>
+                    <button class="settings-danger-btn" id="clearAllChatsBtn">Tüm Sohbetleri Sil</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
