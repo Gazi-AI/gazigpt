@@ -60,6 +60,37 @@
 
             <div class="chat-list" id="chatList"></div>
 
+            <div class="sidebar-limits" id="sidebarLimits">
+                <div class="limit-title">Model Kullanım Limitleri</div>
+                <div class="limit-item" id="limitGazi" data-tooltip="Limitler dolu">
+                    <div class="limit-info-row">
+                        <span class="limit-name">GaziGPT</span>
+                        <span class="limit-percentage" id="pctGazi">100%</span>
+                    </div>
+                    <div class="limit-progress-bg">
+                        <div class="limit-progress-bar" id="barGazi" style="width: 100%;"></div>
+                    </div>
+                </div>
+                <div class="limit-item" id="limitExtended" data-tooltip="Limitler dolu">
+                    <div class="limit-info-row">
+                        <span class="limit-name">Extended</span>
+                        <span class="limit-percentage" id="pctExtended">100%</span>
+                    </div>
+                    <div class="limit-progress-bg">
+                        <div class="limit-progress-bar" id="barExtended" style="width: 100%;"></div>
+                    </div>
+                </div>
+                <div class="limit-item" id="limitHyper" data-tooltip="Limitler dolu">
+                    <div class="limit-info-row">
+                        <span class="limit-name">Hyper</span>
+                        <span class="limit-percentage" id="pctHyper">100%</span>
+                    </div>
+                    <div class="limit-progress-bg">
+                        <div class="limit-progress-bar" id="barHyper" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="sidebar-footer">
                 <button class="sidebar-footer-btn" id="settingsBtn" title="Ayarlar">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
