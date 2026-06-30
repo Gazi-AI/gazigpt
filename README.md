@@ -24,9 +24,9 @@ Sistem, kullanıcının ihtiyaçlarına göre optimize edilmiş 3 farklı yapay 
 
 | Katman | Tanım | Öncelikli Modeller | Hedef Kullanım |
 | :--- | :--- | :--- | :--- |
-| **⚡ GaziGPT** | Hızlı ve verimli günlük asistan | `Llama-3.1-8B-Instant`, `Gemini-2.5-Flash` | Pratik sorular, hızlı bilgi edinimi |
-| **🧠 Extended** | Uzun ve akıllı bellekli sohbetler | `Gemma-4-31B` (Ollama), `Gemini-1.5-Pro` | Detaylı analizler, planlama, uzun kodlama |
-| **🚀 Hyper** | Derin düşünce ve üst düzey zeka | `GPT-OSS-120B` (Ollama Swarm), `Deepseek-Chat` | Karmaşık algoritmalar, üst düzey mantık |
+| **⚡ GaziGPT** | Hızlı ve verimli günlük asistan | Pratik sorular, hızlı bilgi edinimi |
+| **🧠 Extended** | Uzun ve akıllı bellekli sohbetler | Detaylı analizler, planlama, uzun kodlama |
+| **🚀 Hyper** | Derin düşünce ve üst düzey zeka | Karmaşık algoritmalar, üst düzey mantık |
 
 ---
 
