@@ -22,7 +22,7 @@
 ### 🎭 Akıllı Model Katmanları
 Sistem, kullanıcının ihtiyaçlarına göre optimize edilmiş 3 farklı yapay zeka katmanına sahiptir:
 
-| Katman | Tanım | Hedef Kullanım |
+| Katman | Tanım || Hedef Kullanım |
 | :--- | :--- | :--- | :--- |
 | **⚡ GaziGPT** | Hızlı ve verimli günlük asistan | Pratik sorular, hızlı bilgi edinimi |
 | **🧠 Extended** | Uzun ve akıllı bellekli sohbetler | Detaylı analizler, planlama, uzun kodlama |
